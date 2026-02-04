@@ -54,6 +54,34 @@ export function getPowertrainCluster(car) {
     return "unknown";
 }
 
+// Optimization v8 (Feb 4, 2026) -> 3.93% Median Error
+// Based on 2000-trial random search on full 792-record dataset
+const VALUATION_CONFIG = {
+    shared: {
+        recencyPenalty: 0.40,      // Market timing became more critical
+        accidentPenalty: 21,       // Reduced from 52 -> 21 (Market is forgiving?)
+        tireUserWants8Penalty: 32, // Mismatch when user wants 8 tires
+        tireUserWants4Penalty: 17, // Mismatch when user wants 4 tires
+        tireTypePenalty: 18,       // Wrong tire type
+        statusPenalty: 148,        // Significant penalty for rejected offers
+        hitchValue: 298,           // Value of a trailer hitch
+        neighborCount: 5,          // Lower count -> Focus on very top matches
+        weightExponent: 1.98       // Flatter weighting than v7 (1.98 vs 3.5)
+    },
+    model3: {
+        agePenalty: 11.2,          // Linear Age Penalty
+        ageQuadratic: 0.165,       // Quadratic Age Penalty (Ages faster as it gets older)
+        mileageDepreciation: 0.043,// €430 per 10k km
+        mileageDistancePenalty: 0.0036 // Score penalty per km difference
+    },
+    modelY: {
+        agePenalty: 11.9,          // Linear Age Penalty
+        ageQuadratic: 0.073,       // Quadratic Age Penalty
+        mileageDepreciation: 0.099,// €990 per 10k km (Huge depreciation!)
+        mileageDistancePenalty: 0.0038 // Score penalty per km difference
+    }
+};
+
 export function predictPrice(inputs, database) {
     const {
         model,
@@ -68,6 +96,10 @@ export function predictPrice(inputs, database) {
 
     const targetDate = new Date(registrationDate);
     const now = new Date();
+
+    // Select Model Config
+    const modelConfig = (model === "Model 3") ? VALUATION_CONFIG.model3 : VALUATION_CONFIG.modelY;
+    const shared = VALUATION_CONFIG.shared;
 
     // 1. Hard Filtering
     const filtered = database.filter((car) => {
@@ -112,22 +144,24 @@ export function predictPrice(inputs, database) {
         const carRegDate = parseISO(car.first_registration);
         const auctionDate = parseISO(car.auction_end_date);
 
-        // Recency (Market Trend): 0.14 per day (Optimized)
+        // Recency (Market Trend)
         const daysSinceAuction = Math.abs(differenceInDays(now, auctionDate));
-        const recencyPenalty = daysSinceAuction * 0.14;
+        const recencyPenalty = daysSinceAuction * shared.recencyPenalty;
         score += recencyPenalty;
 
-        // Age (Relative Age): 7.5 per month (Optimized)
+        // Age (Relative Age) with Quadratic Term
         // We compare the age of the target car today vs the age of the comparable at its sale.
         const ageTarget = Math.abs(differenceInMonths(now, targetDate));
         const ageComp = Math.abs(differenceInMonths(auctionDate, carRegDate));
         const monthsDiff = Math.abs(ageTarget - ageComp);
-        const agePenalty = monthsDiff * 7.5;
+
+        let agePenalty = monthsDiff * modelConfig.agePenalty;
+        agePenalty += (monthsDiff * monthsDiff) * modelConfig.ageQuadratic; // Non-linear
         score += agePenalty;
 
-        // Mileage Sensitivity: 0.0045 per km diff (Optimized)
+        // Mileage Sensitivity
         const kmDiff = Math.abs(mileage - car.mileage);
-        const mileagePenalty = kmDiff * 0.0045;
+        const mileagePenalty = kmDiff * modelConfig.mileageDistancePenalty;
         score += mileagePenalty;
 
         // Attributes (Soft Penalties)
@@ -136,8 +170,8 @@ export function predictPrice(inputs, database) {
         // Data: accident_free_cardentity = "t" or "f"
         const carIsAccidentFree = car.accident_free_cardentity === "t";
         if (isAccidentFree !== carIsAccidentFree) {
-            score += 30; // Optimized
-            penalties.accident = 30;
+            score += shared.accidentPenalty;
+            penalties.accident = shared.accidentPenalty;
         }
 
         // Trailer Hitch (AHK)
@@ -160,43 +194,33 @@ export function predictPrice(inputs, database) {
             else carOption = "4_summer";
         }
 
-        // Logic:
-        // if tireOption is 8_tires:
-        //    if carOption is 8_tires -> match (0)
-        //    else -> mismatch amount (20)
-        // else (user wants 4 tires):
-        //    if carOption is 8_tires -> mismatch amount (20)
-        //    else (both 4 tires):
-        //       if type match -> 0
-        //       else -> mismatch type (5)
-
-        // Helper map for display
+        // Display Helper
         const displayMap = {
             "8_tires": "8 Tires",
             "4_summer": "Summer",
             "4_winter": "Winter",
             "4_all_season": "All-Season"
         };
+        let tireMatchLabel = displayMap[carOption];
 
-        let tireMatchLabel = displayMap[carOption]; // Default to showing what the car has
-
+        // Tire Logic
         if (tireOption === "8_tires") {
             if (carOption !== "8_tires") {
-                score += 30;
-                penalties.tire = 30;
+                score += shared.tireUserWants8Penalty;
+                penalties.tire = shared.tireUserWants8Penalty;
                 tireMatchLabel = `Mismatch: Requested 8 Tires vs Car has ${displayMap[carOption]}`;
             }
         } else {
             // User wants single set (4 tires)
             if (carOption === "8_tires") {
-                score += 14;
-                penalties.tire = 14;
+                score += shared.tireUserWants4Penalty;
+                penalties.tire = shared.tireUserWants4Penalty;
                 tireMatchLabel = `Mismatch: Requested 4 Tires vs Car has 8 Tires`;
             } else {
                 // Both are single sets. Check type.
                 if (tireOption !== carOption) {
-                    score += 5;
-                    penalties.tire = 5;
+                    score += shared.tireTypePenalty;
+                    penalties.tire = shared.tireTypePenalty;
                     tireMatchLabel = `Mismatch: ${displayMap[tireOption]} vs ${displayMap[carOption]}`;
                 }
             }
@@ -204,8 +228,8 @@ export function predictPrice(inputs, database) {
 
         // Status Penalty
         if (car.status !== "closed_seller_accepted") {
-            score += 100;
-            penalties.status = 100;
+            score += shared.statusPenalty;
+            penalties.status = shared.statusPenalty;
         }
 
         // Price Adjustment Logic (Appraisal Method)
@@ -216,22 +240,20 @@ export function predictPrice(inputs, database) {
 
         // 1. Trailer Hitch
         if (hasAhk && !carHasAhk) {
-            adjustment += 250;
-            hitchAdjMsg = "+€250 (Missing Hitch)";
+            adjustment += shared.hitchValue;
+            hitchAdjMsg = `+€${shared.hitchValue} (Missing Hitch)`;
         } else if (!hasAhk && carHasAhk) {
-            adjustment -= 250;
-            hitchAdjMsg = "-€250 (Has Hitch)";
+            adjustment -= shared.hitchValue;
+            hitchAdjMsg = `-€${shared.hitchValue} (Has Hitch)`;
         }
 
         // 2. Mileage Adjustment (Depreciation)
-        // Rate: 0.07 per km (Optimized from 0.06)
-        const mileageDiff = car.mileage - mileage;
-        const mileageAdj = mileageDiff * 0.055;
+        // Model Specific Rate
+        const mileageAdj = (car.mileage - mileage) * modelConfig.mileageDepreciation;
 
         if (Math.abs(mileageAdj) > 50) {
             adjustment += mileageAdj;
             const sign = mileageAdj > 0 ? "+" : "-";
-            // e.g. "+€3000"
             mileageAdjMsg = `${sign}€${Math.abs(mileageAdj).toFixed(0)}`;
         }
 
@@ -262,9 +284,9 @@ export function predictPrice(inputs, database) {
         };
     });
     // 3. Prediction
-    // Top 8 neighbors (Optimized from 4)
+    // Optimized v8 Neighbor Count
     scored.sort((a, b) => a.score - b.score);
-    const neighbors = scored.slice(0, 6);
+    const neighbors = scored.slice(0, shared.neighborCount);
 
     if (neighbors.length === 0) return { price: 0, neighbors: [] };
 
@@ -272,7 +294,7 @@ export function predictPrice(inputs, database) {
     let weightedSum = 0;
 
     neighbors.forEach(n => {
-        const weight = 1 / (n.score + 1);
+        const weight = 1 / Math.pow((n.score + 1), shared.weightExponent);
         weightedSum += n.adjustedPrice * weight; // Use Adjusted Price
         totalWeight += weight;
         n.weight = weight; // for display

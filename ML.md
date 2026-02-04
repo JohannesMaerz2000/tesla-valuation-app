@@ -38,14 +38,34 @@ A key discovery: **Model 3 and Model Y depreciate very differently**. Running un
 | Run 3 (Relative Age) | Feb 4, 2026 | 3.49%* | Relative age logic |
 | **v4 (Correct Baseline)** | Feb 4, 2026 | 3.71% | Fixed baseline, full dataset |
 | **v5 (Model-Specific)** | Feb 4, 2026 | **3.65%** | Separate Model 3 / Model Y params |
+| v7 (Unified Params) | Feb 4, 2026 | 4.37% | Re-run on 792 unified records (Regression) |
+| **v8 (Model-Specific)** | Feb 4, 2026 | **3.93%** | Re-introduced model-specific + quadratic age |
 
-*Note: Earlier runs used 200-sample random subsets which introduced variance. v4+ uses full 609-record dataset for deterministic results.
+*Note: v1-3 used subset samples. v7 uses the full 792-record unified dataset.*
 
 ---
 
-## Current Best: v5 Model-Specific Parameters
+## Current Best: v8 (Model-Specific Optimization)
 
-### Results
+### Key Findings (v8 Update)
+We re-ran the optimization specifically looking for **model-specific differences** on the full 792-record dataset. The results confirmed that Model Y and Model 3 depreciate very differently, allowing us to drop the error from 4.37% (v7) to **3.93%**.
+
+| Parameter | v7 (Unified) | v8 (Model-Specific) | Insight |
+| :--- | :--- | :--- | :--- |
+| **Recency** | 0.26 | **0.40** | Market timing is becoming *more* critical. |
+| **Accident Penalty** | 52 | **21** | Market forgiveness? Or previous value was overfitting. |
+| **Weight Exponent** | 3.5 | **1.98** | Less aggressive "winner takes all" than v7. |
+| **Model Y Depr** | €580/10k | **€990/10k** | **Huge**: Model Y mileage penalty is double Model 3's (€430). |
+| **Age Logic**| Linear | **Quadratic** | Cars lose value faster as they get older. |
+
+**Median Error**: 3.93% (Model 3: 4.64%, Model Y: 3.62%).
+This confirms that treating the models separately is essential for accuracy.
+
+---
+
+### Previous Best: v5 Model-Specific Parameters (Legacy)
+
+### Results (v5)
 | Metric | Production Baseline | v5 Optimized |
 | :--- | :--- | :--- |
 | **Overall Median Error** | 4.10% | **3.65%** |

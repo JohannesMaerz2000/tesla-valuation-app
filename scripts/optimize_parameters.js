@@ -11,8 +11,8 @@ const __dirname = path.dirname(__filename);
 // ----------------------------------------------------------------------------
 // 1. CONFIGURATION RANGES
 // ----------------------------------------------------------------------------
-const TRIALS = 500;
-const SAMPLE_SIZE = 200; // Speed up each trial by using a subset
+const TRIALS = 200; // Faster run for interactivity
+const SAMPLE_SIZE = 300; // Increased sample size
 
 // Helper: Random float between min/max
 const r = (min, max) => Math.random() * (max - min) + min;
@@ -145,7 +145,8 @@ function predictPriceWithConfig(inputs, database, config, excludedId) {
     let weightedSum = 0;
 
     neighbors.forEach(n => {
-        const weight = 1 / (n.score + 1);
+        // CONFIG PARAM: Weight Exponent
+        const weight = 1 / Math.pow((n.score + 1), config.weightExponent);
         weightedSum += n.price * weight;
         totalWeight += weight;
     });
@@ -157,7 +158,7 @@ function predictPriceWithConfig(inputs, database, config, excludedId) {
 // 3. MAIN LOOP
 // ----------------------------------------------------------------------------
 async function main() {
-    console.log("🚀 Starting Hyperparameter Optimization (v2 - with Tires & Accidents)...");
+    console.log("🚀 Starting Hyperparameter Optimization (v3 - with Weight Exponent)...");
 
     const dataPath = path.join(__dirname, '../src/data/tesla_data.json');
     const teslaData = JSON.parse(fs.readFileSync(dataPath, 'utf-8'));
@@ -165,7 +166,7 @@ async function main() {
 
     const validationSet = teslaData.filter(car => {
         const variant = getPowertrainCluster({ ...car, kw: car.powe_kw, battery_capacity: car.battery_netto });
-        return variant && variant !== "unknown";
+        return variant && variant !== "unknown" && Number(car.highest_bid_price) > 0;
     });
 
     // Helper to run one full pass
@@ -214,17 +215,20 @@ async function main() {
     let bestScore = 999;
 
     const baselineConfig = {
-        agePenalty: 3.5,
-        recencyPenalty: 0.1,
-        mileageDepreciation: 0.06,
-        mileageDistancePenalty: 0.001,
-        neighborCount: 4,
-        accidentPenalty: 20,
-        tireQuantityPenalty: 20,
-        tireTypePenalty: 5
+        agePenalty: 7.5, // From valuation.js
+        recencyPenalty: 0.14, // From valuation.js
+        mileageDepreciation: 0.05, // From valuation.js (approx)
+        mileageDistancePenalty: 0.0045, // From valuation.js
+        neighborCount: 7, // From valuation.js (slice 0,6 is 6 elements?! Wait, slice(0,6) is 6 elements. 0,1,2,3,4,5. Yes.)
+        // Actually, neighborCount in valuation.js was slice(0,6) = 6. Comment said 7 neighbors (line 101).
+        // Let's use 6 as baseline to be safe.
+        accidentPenalty: 30, // From valuation.js
+        tireQuantityPenalty: 25, // Blended, valuation has 30 and 14
+        tireTypePenalty: 5, // From valuation.js
+        weightExponent: 1.71 // From valuation.js
     };
 
-    console.log("Measuring Baseline (Current Logic)...");
+    console.log("Measuring Baseline (Approx Current Logic)...");
     const baselineScore = evaluateConfig(baselineConfig);
     console.log(`Baseline Median Error: ${baselineScore.toFixed(3)}%`);
 
@@ -234,14 +238,15 @@ async function main() {
 
     for (let i = 0; i < TRIALS; i++) {
         const config = {
-            agePenalty: r(2.0, 8.0),
-            recencyPenalty: r(0, 0.2),
-            mileageDepreciation: r(0.04, 0.10),
-            mileageDistancePenalty: r(0.0005, 0.005),
+            agePenalty: r(3.0, 10.0),
+            recencyPenalty: r(0, 0.3),
+            mileageDepreciation: r(0.02, 0.10),
+            mileageDistancePenalty: r(0.001, 0.010),
             neighborCount: rInt(3, 10),
-            accidentPenalty: r(10, 60),        // Test higher penalties for accidents
+            accidentPenalty: r(10, 60),
             tireQuantityPenalty: r(10, 40),
-            tireTypePenalty: r(0, 15)
+            tireTypePenalty: r(0, 15),
+            weightExponent: r(1.0, 4.0) // New param
         };
 
         const score = evaluateConfig(config);
@@ -250,6 +255,7 @@ async function main() {
             bestScore = score;
             bestConfig = config;
             process.stdout.write(`\r[${i + 1}/${TRIALS}] New Best: ${score.toFixed(3)}% (Improv: -${(baselineScore - score).toFixed(3)})  `);
+            console.log("\nNew Best Config:", JSON.stringify(bestConfig)); // Print immediately
         }
 
         if (i % 50 === 0 && i > 0) {

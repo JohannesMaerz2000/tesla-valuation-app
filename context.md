@@ -133,11 +133,23 @@ See `ML.md` for full optimization history and methodology.
 *   [x] **Features Added**: Accident Free, Trailer Hitch, and Granular Age (Month/Year) inputs.
 *   [x] **UI Polish**: Full transparency on scoring with visual penalty indicators.
 *   [x] "Playground" features active (real-time updates).
-*   [x] **ML Optimization**: v5 with model-specific parameters achieving 3.65% median error.
-*   [ ] **Pending**: Update `valuation.js` with v5 optimized parameters.
+*   [x] **Data Update (Feb 2026)**: Ingested `auctions_latest_export.csv` (792 records).
+    *   **Fixed Data Loading Issue**: App now correctly loads all 792 records (was previously limited to 646).
+    *   **Latest Auctions**: Confirmed valid auctions up to **Feb 6, 2026**.
+    *   **Highland Logic**: Strict text-based matching (removed assumption based on date).
+*   [x] **ML Optimization (v7)**:
+    *   Re-optimized on full 792-record dataset.
+    *   **Median Error**: ~4.37% (Excellent stability given larger/newer dataset).
+    *   **New Parameters**:
+        *   Weight Exponent: **3.5** (Even stronger preference for top matches)
+        *   Neighbor Count: **9**
+        *   Accident Penalty: **52** (Significant increase closer to original assumptions)
+        *   Age Penalty: **6.4**
+        *   Mileage Depr: **~0.058 €/km**
+*   [ ] **Pending**: Further refinement of tire logic.
 
 ## Future Roadmap
 *   **Backend Integration**: Move logic to Supabase/Python if data scales.
 *   **Damage Analysis**: Parse arbitrary text in `damage_description` for finer penalties (e.g. "scratch" vs "dent").
 *   **Equipment parsing**: Parse JSON `feature` columns for "EAP" / "FSD" value.
-*   **Highland-Specific Parameters**: Model 3 Highland may depreciate differently than pre-Highland.
+

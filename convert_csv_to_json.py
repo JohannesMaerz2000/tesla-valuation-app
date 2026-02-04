@@ -2,7 +2,7 @@ import csv
 import json
 
 csv_path = 'tesla_data_with_highland_flag.csv'
-json_path = 'tesla_data.json'
+json_path = 'src/data/tesla_data.json'
 
 data = []
 with open(csv_path, 'r', encoding='utf-8') as f:
@@ -14,7 +14,8 @@ with open(csv_path, 'r', encoding='utf-8') as f:
             row['mileage'] = int(row['mileage']) if row['mileage'] else 0
             row['powe_kw'] = int(float(row['powe_kw'])) if row['powe_kw'] else 0
             row['battery_netto'] = int(round(float(row['battery_netto']))) if row['battery_netto'] else 0
-        except ValueError:
+        except ValueError as e:
+            print(f"Skipping row due to error: {e} | Row: {row}")
             continue # Skip bad rows
             
         data.append(row)

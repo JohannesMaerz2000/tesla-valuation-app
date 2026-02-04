@@ -129,27 +129,27 @@ async function main() {
     // Current production as baseline (converted to new structure)
     const productionConfig = {
         shared: {
-            recencyPenalty: 0.14,
-            accidentPenalty: 30,
-            tireUserWants8Penalty: 30,
-            tireUserWants4Penalty: 14,
-            tireTypePenalty: 5,
+            recencyPenalty: 0.26,
+            accidentPenalty: 52,
+            tireUserWants8Penalty: 34,
+            tireUserWants4Penalty: 34,
+            tireTypePenalty: 1,
             statusPenalty: 100,
             hitchValue: 250,
-            neighborCount: 6,
-            weightExponent: 1.0
+            neighborCount: 9,
+            weightExponent: 3.5
         },
         model3: {
-            agePenalty: 7.5,
+            agePenalty: 6.4,
             ageQuadratic: 0,
-            mileageDepreciation: 0.055,
-            mileageDistancePenalty: 0.0045
+            mileageDepreciation: 0.058,
+            mileageDistancePenalty: 0.0012
         },
         modelY: {
-            agePenalty: 7.5,
+            agePenalty: 6.4,
             ageQuadratic: 0,
-            mileageDepreciation: 0.055,
-            mileageDistancePenalty: 0.0045
+            mileageDepreciation: 0.058,
+            mileageDistancePenalty: 0.0012
         }
     };
 
@@ -243,27 +243,27 @@ async function main() {
     for (let i = 0; i < TRIALS; i++) {
         const config = {
             shared: {
-                recencyPenalty: r(0.04, 0.20),
-                accidentPenalty: r(10, 45),
-                tireUserWants8Penalty: r(10, 45),
-                tireUserWants4Penalty: r(8, 35),
-                tireTypePenalty: r(2, 18),
-                statusPenalty: r(50, 130),
+                recencyPenalty: r(0.1, 0.4),
+                accidentPenalty: r(20, 80),
+                tireUserWants8Penalty: r(20, 60),
+                tireUserWants4Penalty: r(15, 50),
+                tireTypePenalty: r(1, 20),
+                statusPenalty: r(50, 150),
                 hitchValue: r(150, 350),
-                neighborCount: rInt(4, 12),
-                weightExponent: r(0.7, 2.0)
+                neighborCount: rInt(5, 12),
+                weightExponent: r(1.5, 5.0)
             },
             model3: {
-                agePenalty: r(5, 15),
-                ageQuadratic: r(0, 0.15),
-                mileageDepreciation: r(0.03, 0.09),
-                mileageDistancePenalty: r(0.001, 0.006)
+                agePenalty: r(4, 15),
+                ageQuadratic: r(0, 0.2),
+                mileageDepreciation: r(0.03, 0.08),
+                mileageDistancePenalty: r(0.0005, 0.004)
             },
             modelY: {
-                agePenalty: r(5, 18),
-                ageQuadratic: r(0, 0.15),
-                mileageDepreciation: r(0.03, 0.09),
-                mileageDistancePenalty: r(0.001, 0.006)
+                agePenalty: r(8, 20),
+                ageQuadratic: r(0, 0.2),
+                mileageDepreciation: r(0.04, 0.10),
+                mileageDistancePenalty: r(0.0005, 0.005)
             }
         };
 
@@ -274,6 +274,7 @@ async function main() {
             bestConfig = JSON.parse(JSON.stringify(config));
             const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
             console.log(`[${i + 1}/${TRIALS}] 🎯 New Best: ${result.median.toFixed(3)}% (M3: ${result.m3Median.toFixed(2)}%, MY: ${result.myMedian.toFixed(2)}%) [${elapsed}s]`);
+            console.log(JSON.stringify(config, null, 2));
         }
 
         if (i % 200 === 0 && i > 0) {
