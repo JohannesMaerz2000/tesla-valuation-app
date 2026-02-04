@@ -112,19 +112,19 @@ export function predictPrice(inputs, database) {
         const carRegDate = parseISO(car.first_registration);
         const auctionDate = parseISO(car.auction_end_date);
 
-        // Recency: 0.1 per day since auction
+        // Recency: 0.022 per day since auction (Optimized from 0.1)
         const daysSinceAuction = Math.abs(differenceInDays(now, auctionDate));
-        const recencyPenalty = daysSinceAuction * 0.1;
+        const recencyPenalty = daysSinceAuction * 0.022;
         score += recencyPenalty;
 
-        // Age: 3.5 per month difference
+        // Age: 4.3 per month difference (Optimized from 3.5)
         const monthsDiff = Math.abs(differenceInMonths(targetDate, carRegDate));
-        const agePenalty = monthsDiff * 3.5;
+        const agePenalty = monthsDiff * 4.3;
         score += agePenalty;
 
-        // Mileage: 1 per 1000km diff -> 0.001 per km
+        // Mileage: 1.17 per 1000km diff -> 0.00117 per km (Optimized from 0.001)
         const kmDiff = Math.abs(mileage - car.mileage);
-        const mileagePenalty = kmDiff * 0.001;
+        const mileagePenalty = kmDiff * 0.00117;
         score += mileagePenalty;
 
         // Attributes (Soft Penalties)
@@ -221,8 +221,9 @@ export function predictPrice(inputs, database) {
         }
 
         // 2. Mileage Adjustment (Depreciation)
+        // Rate: 0.07 per km (Optimized from 0.06)
         const mileageDiff = car.mileage - mileage;
-        const mileageAdj = mileageDiff * 0.06;
+        const mileageAdj = mileageDiff * 0.07;
 
         if (Math.abs(mileageAdj) > 50) {
             adjustment += mileageAdj;
@@ -256,9 +257,9 @@ export function predictPrice(inputs, database) {
         };
     });
     // 3. Prediction
-    // Top 4 neighbors
+    // Top 8 neighbors (Optimized from 4)
     scored.sort((a, b) => a.score - b.score);
-    const neighbors = scored.slice(0, 4);
+    const neighbors = scored.slice(0, 8);
 
     if (neighbors.length === 0) return { price: 0, neighbors: [] };
 

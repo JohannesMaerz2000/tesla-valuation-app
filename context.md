@@ -55,9 +55,9 @@ We moved away from a "Base Price + Adjustments" formula to a **Weighted Nearest 
     *   **Taxation**: Strict matching. ROI/VAT cars are only matched with other VAT-deductible cars (Net Price). Margin cars match Margin cars (Gross Price).
 
 2.  **Distance Metric (Scoring)**: We find the top 4 most similar cars by minimizing a "Distance Score":
-    *   **Recency**: **0.1 points per day** since auction. (Lowered from 0.5 to prevent overshadowing physical specs).
-    *   **Age**: **3.5 points per month** difference. (Increased to prioritize newer cars).
-    *   **Mileage**: **1 point per 1,000 km** difference.
+    *   **Recency**: **0.022 points per day** (Optimized from 0.1 via ML). Recency matters less than physical specs.
+    *   **Age**: **4.3 points per month** difference (Optimized from 3.5). Age is a stronger driver than expected.
+    *   **Mileage**: **1.17 points per 1,000 km** difference.
     *   **Attributes (Soft Penalties)**: Mismatches here add points, pushing the car down the list or reducing its weight:
         *   **Status**: **100 points** penalty if offer was NOT accepted by seller (e.g. "active" or "declined"). This prioritizes sold prices.
         *   **Accident History**: **20 points** penalty if "Accident Free" status mismatches.
@@ -69,10 +69,10 @@ We moved away from a "Base Price + Adjustments" formula to a **Weighted Nearest 
         *   **Missing Hitch**: If user wants a hitch but comparable has none -> **+€250** added to comparable's price.
         *   **Extra Hitch**: If user has no hitch but comparable has one -> **-€250** subtracted from comparable's price.
     *   **Mileage (Depreciation)**: We adjust the comparable's price based on mileage difference to the target car.
-        *   **Rate**: **€0.06 per km** (Approx €600 per 10k km).
-        *   *Example*: If comparable has +10,000km more than you, we ADD €600 to its price (because your lower mileage car is worth more).
+        *   **Rate**: **€0.07 per km** (Approx €700 per 10k km).
+        *   *Example*: If comparable has +10,000km more than you, we ADD €700 to its price (because your lower mileage car is worth more).
 
-4.  **Prediction**: The final price is a weighted average of the top 4 neighbors (using their *Adjusted Prices*), where weight = `1 / (Score + 1)`.
+4.  **Prediction**: The final price is a weighted average of the top **8 neighbors** (Optimized from 4), where weight = `1 / (Score + 1)`.
 
 ---
 
