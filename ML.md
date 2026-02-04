@@ -9,49 +9,150 @@ This project uses a "Hyperparameter Optimization" approach to mathematically tun
 We use a **Random Search** strategy. The script generates thousands of random combinations of algorithm parameters and tests each one.
 
 ### 2. Leave-One-Out Cross Validation (LOOCV)
-To measure accuracy, we calculate the **Median Absolute Error (%)** for all records. We temporarily remove each car from the dataset and ask the algorithm to predict its price using the remaining data.
+To measure accuracy, we calculate the **Median Absolute Error (%)** for all records. We temporarily remove each car from the dataset (by `auction_id`) and ask the algorithm to predict its price using the remaining data.
 
-### 3. Progressive Refinement (Relative Age Breakthrough)
-Initially, we compared cars based on their **Registration Date** difference. However, we realized this created a "blind spot": a car sold 12 months ago was effectively "younger" during that transaction than it is today. 
+**Important**: We use the full dataset for evaluation (not random subsets) to ensure deterministic, reproducible results.
 
-**The Fix**: We now use **Relative Age Logic**. 
-*   **Age Today**: Months since target car's registration.
+### 3. Relative Age Logic
+Initially, we compared cars based on their **Registration Date** difference. However, we realized this created a "blind spot": a car sold 12 months ago was effectively "younger" during that transaction than it is today.
+
+**The Fix**: We now use **Relative Age Logic**.
+*   **Age Today**: Months since target car's registration to now.
 *   **Age at Sale**: Months between comparable car's registration and its auction date.
 *   **Age Penalty**: Applied to the difference between these two "ages".
 
 This allows the algorithm to correctly adjust for the fact that a historical sale of a 1-year-old car is structurally worth more than a 3-year-old car today, even if they share the same birth year.
 
-## Current Results (Feb 4, 2026 - Run 3)
+### 4. Model-Specific Parameters (v5 Breakthrough)
+A key discovery: **Model 3 and Model Y depreciate very differently**. Running unified parameters for both models was leaving accuracy on the table. v5 introduces separate age and mileage parameters for each model.
 
-The introduction of **Relative Age Logic** and refined feature penalties has led to our most accurate model yet.
+---
 
-| Metric | Baseline (Manual) | Optimized (ML Run 1) | Optimized (ML Run 2) | Optimized (Run 3 - Relative Age) |
+## Optimization History
+
+| Run | Date | Median Error | Key Changes |
+| :--- | :--- | :--- | :--- |
+| Baseline (Manual) | - | ~4.20% | Hand-tuned parameters |
+| ML Run 1 | - | 3.55% | Initial optimization |
+| ML Run 2 | - | 3.52% | Refined penalties |
+| Run 3 (Relative Age) | Feb 4, 2026 | 3.49%* | Relative age logic |
+| **v4 (Correct Baseline)** | Feb 4, 2026 | 3.71% | Fixed baseline, full dataset |
+| **v5 (Model-Specific)** | Feb 4, 2026 | **3.65%** | Separate Model 3 / Model Y params |
+
+*Note: Earlier runs used 200-sample random subsets which introduced variance. v4+ uses full 609-record dataset for deterministic results.
+
+---
+
+## Current Best: v5 Model-Specific Parameters
+
+### Results
+| Metric | Production Baseline | v5 Optimized |
+| :--- | :--- | :--- |
+| **Overall Median Error** | 4.10% | **3.65%** |
+| **Model 3 Median Error** | 4.84% | **4.07%** |
+| **Model Y Median Error** | 3.33% | **3.25%** |
+
+**Total Improvement: 11% relative reduction in error**
+
+### Key Discovery: Model 3 vs Model Y Depreciation
+
+| Parameter | Model 3 | Model Y | Insight |
+| :--- | :--- | :--- | :--- |
+| **Age Penalty (linear)** | 7.1 pts/month | **17.6 pts/month** | Model Y ages **2.5x faster** |
+| **Age Penalty (quadratic)** | +0.13/month² | +0.12/month² | Both accelerate with age |
+| **Mileage Depreciation** | €502/10k km | **€781/10k km** | Model Y loses **55% more** per km |
+| **Mileage Distance Penalty** | 0.0016/km | 0.0035/km | Model Y more sensitive to km diff |
+
+**Why does Model Y depreciate faster?**
+- SUV segment is more competitive (more alternatives)
+- Higher Model Y inventory on the market
+- Model 3 perceived as more "sporty/timeless"
+
+### Shared Parameters (Both Models)
+
+| Parameter | Old Value | New Value | Change | Insight |
 | :--- | :--- | :--- | :--- | :--- |
-| **Median Error** | ~4.20% | 3.55% | 3.52% | **3.49%** |
+| **Recency** | 0.14 pts/day | **0.16 pts/day** | +14% | Market timing matters |
+| **Accident Penalty** | 30 pts | **24 pts** | -20% | Less impactful than assumed |
+| **Tire (User has 8)** | 30 pts | **45 pts** | +50% | Having 8 tires is premium |
+| **Tire (User has 4)** | 14 pts | **19 pts** | +36% | Asymmetric penalty works |
+| **Tire Type Mismatch** | 5 pts | **15 pts** | +200% | Tire type matters more |
+| **Status Penalty** | 100 pts | **67 pts** | -33% | Non-accepted offers useful |
+| **Hitch Value** | €250 | **€192** | -23% | Slightly less valuable |
+| **Neighbor Count** | 6 | **7** | +1 | Slightly more averaging |
+| **Weight Exponent** | 1.0 | **1.71** | +71% | Closest matches dominate |
 
-### Parameter Changes
-The third optimization run successfully decoupled "Market Recency" from "Physical Ageing":
+### Tire Penalty Asymmetry Explained
+- **User has 8 tires, comp has 4**: 45 points (big penalty - your car is better)
+- **User has 4 tires, comp has 8**: 19 points (smaller penalty - comp is better but still usable)
 
-| Parameter | Description | Old Value | New Value | Insight |
-| :--- | :--- | :--- | :--- | :--- |
-| **Age Penalty** | Points per month of "age" | 6.0 | **7.5** | **Ageing hurts more.** Once decoupled from recency, we see that cars lose value faster as they age physically. |
-| **Recency** | Points per day since auction | 0.003 | **0.14** | **Market timing matters.** Prices have actually fluctuated over time more than the simplistic model suggested. |
-| **Depreciation** | € adjustment per km | €0.05 | **€0.055** | **Steady.** Depreciation around €550 per 10k km is consistent. |
-| **Neighbors** | Num. of comparison cars | 8 | **6** | **Niche Focus.** Using slightly fewer, more precise neighbors yields better results than averaging 8. |
-| **Accident** | Penalty points | 25 | **30** | **High Impact.** Accidents are a significant deterrent for buyers. |
-| **Tires (8)** | Penalty points (8 tires) | 14 | **31** | **Premium Value.** Buyers value that second set of wheels significantly more than initially thought. |
+This asymmetry makes sense: if you have the premium feature (8 tires), comparing to a lesser-equipped car requires a larger adjustment.
+
+### Weight Exponent
+The formula `weight = 1 / (score + 1)^exponent` with exponent=1.71 means:
+- A perfect match (score=0) has weight 1.0
+- A score=10 match has weight 0.018 (vs 0.09 with exponent=1)
+- Closest neighbors now dominate the prediction more strongly
+
+---
+
+## Best Configuration (v5)
+
+```javascript
+const config = {
+  shared: {
+    recencyPenalty: 0.159,
+    accidentPenalty: 24,
+    tireUserWants8Penalty: 45,
+    tireUserWants4Penalty: 19,
+    tireTypePenalty: 15,
+    statusPenalty: 67,
+    hitchValue: 192,
+    neighborCount: 7,
+    weightExponent: 1.71
+  },
+  model3: {
+    agePenalty: 7.1,
+    ageQuadratic: 0.131,
+    mileageDepreciation: 0.050,
+    mileageDistancePenalty: 0.0016
+  },
+  modelY: {
+    agePenalty: 17.6,
+    ageQuadratic: 0.115,
+    mileageDepreciation: 0.078,
+    mileageDistancePenalty: 0.0035
+  }
+};
+```
+
+---
 
 ## How to Re-Run Optimization
-As you add more data to `src/data/tesla_data.json`, the "best" parameters might change. You can re-run the optimization at any time.
 
-1.  **Open Terminal**
-2.  **Run the Script**:
-    ```bash
-    node scripts/optimize_parameters.js
-    ```
-3.  **Wait**: The script will run for 1-2 minutes (for ~500 trials).
-4.  **Update**: It will output the new best JSON configuration. You can then manually update the constants in `src/utils/valuation.js`.
+As you add more data to `src/data/tesla_data.json`, the "best" parameters might change.
+
+### Recommended Script: v5 (Model-Specific)
+```bash
+node scripts/optimize_v5_best_of_both.js
+```
+- Runs 2000 trials
+- Uses full dataset (deterministic)
+- Optimizes Model 3 and Model Y separately
+- Includes non-linear age decay and weight exponent
+
+### Other Available Scripts
+| Script | Description |
+| :--- | :--- |
+| `optimize_parameters.js` | Original script (200-sample subset, unified params) |
+| `optimize_v4_correct_baseline.js` | Full dataset, unified params, correct baseline |
+| `optimize_v5_best_of_both.js` | **Recommended**: Full dataset, model-specific |
+| `compare_methodologies.js` | Compares different LOOCV approaches |
+
+---
 
 ## Future Improvements to Try
-*   **Cohort Separation**: Run separate optimizations for Model 3 vs. Model Y.
+*   **Highland-Specific Parameters**: Model 3 Highland may depreciate differently than pre-Highland.
 *   **Damage Text Analysis**: Use keywords to penalize specific damage descriptions.
+*   **Seasonal Effects**: Test if prices vary by month/quarter.
+*   **Bayesian Optimization**: More efficient than random search for finding optimal parameters.

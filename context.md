@@ -7,6 +7,7 @@ This project is a "Valuation Playground" designed to estimate the value of Tesla
 - **Dataset**: `tesla_data_with_highland_flag.csv` (Converted to `tesla_data.json` for the app).
 - **App**: A React + Vite + Tailwind application located in `tesla-valuation-app/`.
 - **Algorithm**: Implemented in `src/utils/valuation.js`.
+- **Optimization Scripts**: Located in `scripts/` - see `ML.md` for details.
 
 ---
 
@@ -30,7 +31,11 @@ The raw data contains fragmented `kW` and `kWh` values. We successfully identifi
 
 ### 3. Tires
 *   Counter-intuitively, broader data showed that cars with *only winter tires* sometimes sold for less or similar to summer-only cars, likely due to correlation with age/mileage.
-*   **Algorithm Strategy**: Users select "8 Tires", "Summer", "Winter", or "All-Season". We apply a **20 point penalty** for quantity mismatches (8 vs 4) and a **5 point penalty** for type mismatches (e.g. Summer vs Winter).
+*   **Algorithm Strategy**: Users select "8 Tires", "Summer", "Winter", or "All-Season".
+*   **Asymmetric Penalties** (discovered via ML optimization):
+    *   User has 8 tires, comp has 4: **45 points** (big mismatch - user's car is better)
+    *   User has 4 tires, comp has 8: **19 points** (smaller penalty)
+    *   Type mismatch (e.g. Summer vs Winter): **15 points**
 
 ### 4. Taxation (VAT vs Margin)
 *   **Mechanism & Data Findings**:
@@ -42,10 +47,23 @@ The raw data contains fragmented `kW` and `kWh` values. We successfully identifi
     *   **Company (VAT) matches VAT**: Result is the **Net Payout**.
     *   The algorithm **strictly filters** neighbors. If you select "Company", it *only* looks at other Company cars. We never mix Net and Gross data.
 
+### 5. Model-Specific Depreciation (ML Discovery)
+A key finding from v5 optimization: **Model 3 and Model Y depreciate very differently**.
+
+| Factor | Model 3 | Model Y | Insight |
+| :--- | :--- | :--- | :--- |
+| **Age Sensitivity** | 7.1 pts/month | 17.6 pts/month | Model Y ages **2.5x faster** |
+| **Mileage Depreciation** | €502/10k km | €781/10k km | Model Y loses **55% more** per km |
+
+**Possible Reasons:**
+- SUV segment is more competitive (more alternatives)
+- Higher Model Y inventory on the market
+- Model 3 perceived as more "sporty/timeless"
+
 ---
 
 ## Algorithm Design
-We moved away from a "Base Price + Adjustments" formula to a **Weighted Nearest Neighbor (KNN)** approach.
+We use a **Weighted Nearest Neighbor (KNN)** approach with **model-specific parameters**.
 
 ### Core Logic
 1.  **Hard Filtering**:
@@ -54,25 +72,46 @@ We moved away from a "Base Price + Adjustments" formula to a **Weighted Nearest 
     *   **Highland**: Strict separation using the `is_highland` flag. Highland models are never compared with Pre-Highland models.
     *   **Taxation**: Strict matching. ROI/VAT cars are only matched with other VAT-deductible cars (Net Price). Margin cars match Margin cars (Gross Price).
 
-2.  **Distance Metric (Scoring)**: We find the top 4 most similar cars by minimizing a "Distance Score":
-    *   **Recency**: **0.022 points per day** (Optimized from 0.1 via ML). Recency matters less than physical specs.
-    *   **Age**: **4.3 points per month** difference (Optimized from 3.5). Age is a stronger driver than expected.
-    *   **Mileage**: **1.17 points per 1,000 km** difference.
-    *   **Attributes (Soft Penalties)**: Mismatches here add points, pushing the car down the list or reducing its weight:
-        *   **Status**: **100 points** penalty if offer was NOT accepted by seller (e.g. "active" or "declined"). This prioritizes sold prices.
-        *   **Accident History**: **20 points** penalty if "Accident Free" status mismatches.
-        *   **Tires**: **20 points** (Quantity mismatch) or **5 points** (Type mismatch).
-    *   *Note: Trailer Hitch mismatch no longer affects the score/ranking, but triggers a price adjustment.*
+2.  **Distance Metric (Scoring)**: We find the most similar cars by minimizing a "Distance Score":
+
+    **Shared Parameters (Both Models):**
+    *   **Recency**: **0.16 points per day** since auction. Recent sales are more relevant.
+    *   **Status**: **67 points** penalty if offer was NOT accepted by seller. Prioritizes actual sales.
+    *   **Accident History**: **24 points** penalty if "Accident Free" status mismatches.
+    *   **Tires**: Asymmetric penalties (see Section 3 above).
+
+    **Model-Specific Parameters:**
+    | Parameter | Model 3 | Model Y |
+    | :--- | :--- | :--- |
+    | Age (linear) | 7.1 pts/month | 17.6 pts/month |
+    | Age (quadratic) | +0.13 pts/month² | +0.12 pts/month² |
+    | Mileage Distance | 0.0016 pts/km | 0.0035 pts/km |
+
+    *Note: Age uses **Relative Age Logic** - comparing the target car's age today vs the comparable's age at its auction date.*
 
 3.  **Price Adjustments (Appraisal Logic)**:
     *   **Trailer Hitch**:
-        *   **Missing Hitch**: If user wants a hitch but comparable has none -> **+€250** added to comparable's price.
-        *   **Extra Hitch**: If user has no hitch but comparable has one -> **-€250** subtracted from comparable's price.
-    *   **Mileage (Depreciation)**: We adjust the comparable's price based on mileage difference to the target car.
-        *   **Rate**: **€0.07 per km** (Approx €700 per 10k km).
-        *   *Example*: If comparable has +10,000km more than you, we ADD €700 to its price (because your lower mileage car is worth more).
+        *   **Missing Hitch**: If user wants a hitch but comparable has none -> **+€192** added to comparable's price.
+        *   **Extra Hitch**: If user has no hitch but comparable has one -> **-€192** subtracted from comparable's price.
+    *   **Mileage (Depreciation)**: Model-specific rates:
+        *   **Model 3**: **€0.050 per km** (€502 per 10k km)
+        *   **Model Y**: **€0.078 per km** (€781 per 10k km)
+        *   *Example*: If comparable has +10,000km more than your Model Y, we ADD €781 to its price.
 
-4.  **Prediction**: The final price is a weighted average of the top **8 neighbors** (Optimized from 4), where weight = `1 / (Score + 1)`.
+4.  **Prediction**: The final price is a weighted average of the top **7 neighbors**, where:
+    ```
+    weight = 1 / (Score + 1)^1.71
+    ```
+    The exponent of 1.71 means closest matches have significantly more influence than distant ones.
+
+---
+
+## Current Accuracy
+*   **Overall Median Error**: **3.65%** (on 609-record validation set)
+*   **Model 3 Median Error**: 4.07%
+*   **Model Y Median Error**: 3.25%
+
+See `ML.md` for full optimization history and methodology.
 
 ---
 
@@ -81,7 +120,7 @@ We moved away from a "Base Price + Adjustments" formula to a **Weighted Nearest 
 *   **Styling**: Tailwind CSS with a custom "Premium Dark Mode" aesthetic.
 *   **Transparency**:
     *   **Impact %**: We explicitly show the relational influence (percentage) of each comparable car on the final valuation.
-    *   **Price Adjustments**: Adjusted prices are shown in yellow with the original price crossed out (e.g. ~~€30.000~~ **€30.250**).
+    *   **Price Adjustments**: Adjusted prices are shown in yellow with the original price crossed out (e.g. ~~€30.000~~ **€30.192**).
     *   **Score Breakdown**: A detailed table shows specific penalties. Mismatched attributes like Trailer Hitch show their financial adjustment value.
     *   **Visual Cues**: Red penalties for score mismatches, Yellow text for price adjustments, Green checkmarks for matches.
 
@@ -94,8 +133,11 @@ We moved away from a "Base Price + Adjustments" formula to a **Weighted Nearest 
 *   [x] **Features Added**: Accident Free, Trailer Hitch, and Granular Age (Month/Year) inputs.
 *   [x] **UI Polish**: Full transparency on scoring with visual penalty indicators.
 *   [x] "Playground" features active (real-time updates).
+*   [x] **ML Optimization**: v5 with model-specific parameters achieving 3.65% median error.
+*   [ ] **Pending**: Update `valuation.js` with v5 optimized parameters.
 
 ## Future Roadmap
 *   **Backend Integration**: Move logic to Supabase/Python if data scales.
 *   **Damage Analysis**: Parse arbitrary text in `damage_description` for finer penalties (e.g. "scratch" vs "dent").
 *   **Equipment parsing**: Parse JSON `feature` columns for "EAP" / "FSD" value.
+*   **Highland-Specific Parameters**: Model 3 Highland may depreciate differently than pre-Highland.
