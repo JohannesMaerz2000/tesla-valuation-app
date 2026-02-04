@@ -19,6 +19,16 @@ const r = (min, max) => Math.random() * (max - min) + min;
 // Helper: Random int
 const rInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
+// Helper: Get tire option from car data
+function getTireOption(car) {
+    const sets = parseInt(car.tires_total_sets) || 1;
+    if (sets === 2) return "8_tires";
+
+    if (car.tires_all_season === "1") return "4_all_season";
+    if (car.tires_winter === "1") return "4_winter";
+    return "4_summer";
+}
+
 // ----------------------------------------------------------------------------
 // 2. LOGIC (Modified to accept Config)
 // ----------------------------------------------------------------------------
@@ -31,7 +41,8 @@ function predictPriceWithConfig(inputs, database, config, excludedId) {
         isNetPrice,
         hasAhk,
         isAccidentFree,
-        isHighland
+        isHighland,
+        tireOption
     } = inputs;
 
     const targetDate = new Date(registrationDate);
@@ -64,33 +75,43 @@ function predictPriceWithConfig(inputs, database, config, excludedId) {
         const carRegDate = parseISO(car.first_registration);
         const auctionDate = parseISO(car.auction_end_date);
 
-        // CONFIG PARAM: Recency
+        // CONFIG PARAM: Recency (Market Trend)
         const daysSinceAuction = Math.abs(differenceInDays(now, auctionDate));
         score += daysSinceAuction * config.recencyPenalty;
 
-        // CONFIG PARAM: Age
-        const monthsDiff = Math.abs(differenceInMonths(targetDate, carRegDate));
+        // CONFIG PARAM: Age (Relative Age Comparison)
+        // This accounts for the fact that a car sold 12 months ago was "younger" back then.
+        const ageTarget = differenceInMonths(now, targetDate);
+        const ageComp = differenceInMonths(auctionDate, carRegDate);
+        const monthsDiff = Math.abs(ageTarget - ageComp);
         score += monthsDiff * config.agePenalty;
 
         // CONFIG PARAM: Mileage Score
         const kmDiff = Math.abs(mileage - car.mileage);
         score += kmDiff * config.mileageDistancePenalty;
 
-        // Attributes (Soft Penalties)
+        // CONFIG PARAM: Accident Penalty
         const carIsAccidentFree = car.accident_free_cardentity === "t";
-        if (isAccidentFree !== carIsAccidentFree) score += 20;
+        if (isAccidentFree !== carIsAccidentFree) score += config.accidentPenalty;
 
-        // Tires (Simplified implementation for speed)
-        const sets = parseInt(car.tires_total_sets) || 1;
-        const carOption = sets === 2 ? "8_tires" : (car.tires_winter === "1" ? "4_winter" : "4_summer");
+        // CONFIG PARAM: Tire Penalties
+        const carOption = getTireOption(car);
 
-        // Assume user wants 4 summer (standard assumption for bulk test validation without user input)
-        // Or better: Assume car matches itself if we were predicting it.
-        // Actually, let's just use static penalty logic roughly matching the app's average case.
-        // A mismatch adds points. Let's assume average 5 pts penalty for noise?
-        // Or strictly: since we don't vary tire weights in this optimization, we can leave it as is or simplify.
-        // Let's implement basics:
-        // Score += 0 (assuming match for simplicity in high-speed loop, noise is negligible compared to age/mileage)
+        if (tireOption === "8_tires") {
+            if (carOption !== "8_tires") {
+                score += config.tireQuantityPenalty;
+            }
+        } else {
+            // User wants 4 tires
+            if (carOption === "8_tires") {
+                score += config.tireQuantityPenalty;
+            } else {
+                // Both are single sets. Check type.
+                if (tireOption !== carOption) {
+                    score += config.tireTypePenalty;
+                }
+            }
+        }
 
         // Status
         if (car.status !== "closed_seller_accepted") score += 100;
@@ -136,7 +157,7 @@ function predictPriceWithConfig(inputs, database, config, excludedId) {
 // 3. MAIN LOOP
 // ----------------------------------------------------------------------------
 async function main() {
-    console.log("🚀 Starting Hyperparameter Optimization...");
+    console.log("🚀 Starting Hyperparameter Optimization (v2 - with Tires & Accidents)...");
 
     const dataPath = path.join(__dirname, '../src/data/tesla_data.json');
     const teslaData = JSON.parse(fs.readFileSync(dataPath, 'utf-8'));
@@ -167,7 +188,8 @@ async function main() {
                 isNetPrice: car.taxation === "vat_deductible",
                 hasAhk: car.features_trailer_hitch === "t" || car.trailer_hitch_seller === "t",
                 isAccidentFree: car.accident_free_cardentity === "t",
-                isHighland: car.is_highland === "TRUE"
+                isHighland: car.is_highland === "TRUE",
+                tireOption: getTireOption(car)
             };
 
             const predicted = predictPriceWithConfig(inputs, teslaData, config, car.auction_id);
@@ -196,7 +218,10 @@ async function main() {
         recencyPenalty: 0.1,
         mileageDepreciation: 0.06,
         mileageDistancePenalty: 0.001,
-        neighborCount: 4
+        neighborCount: 4,
+        accidentPenalty: 20,
+        tireQuantityPenalty: 20,
+        tireTypePenalty: 5
     };
 
     console.log("Measuring Baseline (Current Logic)...");
@@ -209,11 +234,14 @@ async function main() {
 
     for (let i = 0; i < TRIALS; i++) {
         const config = {
-            agePenalty: r(2.0, 7.0),           // Focus range around 3.5
-            recencyPenalty: r(0, 0.5),         // Focus range around 0.1
-            mileageDepreciation: r(0.02, 0.10),// Focus range around 0.06
-            mileageDistancePenalty: r(0.0005, 0.003),
-            neighborCount: rInt(3, 8)
+            agePenalty: r(2.0, 8.0),
+            recencyPenalty: r(0, 0.2),
+            mileageDepreciation: r(0.04, 0.10),
+            mileageDistancePenalty: r(0.0005, 0.005),
+            neighborCount: rInt(3, 10),
+            accidentPenalty: r(10, 60),        // Test higher penalties for accidents
+            tireQuantityPenalty: r(10, 40),
+            tireTypePenalty: r(0, 15)
         };
 
         const score = evaluateConfig(config);
@@ -224,7 +252,7 @@ async function main() {
             process.stdout.write(`\r[${i + 1}/${TRIALS}] New Best: ${score.toFixed(3)}% (Improv: -${(baselineScore - score).toFixed(3)})  `);
         }
 
-        if (i % 100 === 0 && i > 0) {
+        if (i % 50 === 0 && i > 0) {
             const elapsed = (Date.now() - startTime) / 1000;
             const rate = i / elapsed;
             process.stdout.write(`\r[${i}/${TRIALS}] Running... (${rate.toFixed(1)}/sec) Current Best: ${bestScore.toFixed(3)}%    `);

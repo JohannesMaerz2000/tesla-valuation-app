@@ -400,7 +400,7 @@ function App() {
                                                     <span className="text-gray-300 text-xs hidden sm:inline">
                                                         {new Date(car.first_registration).toLocaleString('default', { month: 'short', year: 'numeric' })}
                                                         <span className="text-gray-500 ml-1">
-                                                            ({car.matchDetails.diffMonths > 0 ? '+' : ''}{car.matchDetails.diffMonths} mo)
+                                                            ({car.matchDetails.ageComp} mo old at sale / {car.matchDetails.diffAgeMonths > 0 ? '+' : ''}{car.matchDetails.diffAgeMonths} mo)
                                                         </span>
                                                     </span>
                                                 </div>

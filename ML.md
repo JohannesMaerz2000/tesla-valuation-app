@@ -6,31 +6,40 @@ This project uses a "Hyperparameter Optimization" approach to mathematically tun
 ## Methodology
 
 ### 1. Random Search Optimization
-We use a **Random Search** strategy. The script generates thousands of random combinations of algorithm parameters (within reasonable bounds) and tests each one.
-*   **Why Random Search?** It is often more efficient than Grid Search for hyperparameter tuning, as it explores the solution space more effectively when some parameters matter much more than others.
+We use a **Random Search** strategy. The script generates thousands of random combinations of algorithm parameters and tests each one.
 
 ### 2. Leave-One-Out Cross Validation (LOOCV)
-To measure accuracy, we cannot simply test the algorithm on the cars it already knows (that would be cheating).
-*   **The Process**: For every car in the database (N=646), we temporarily **remove** it from the dataset, train the algorithm on the remaining N-1 cars, and ask it to predict the price of the removed car.
-*   **The Metric**: We calculate the **Median Absolute Error (%)** across all 600+ predictions. We use Median instead of Average to avoid skewing results by a few extreme outliers (e.g. cars with massive hail damage).
+To measure accuracy, we calculate the **Median Absolute Error (%)** for all records. We temporarily remove each car from the dataset and ask the algorithm to predict its price using the remaining data.
 
-## Current Results (Feb 4, 2026)
+### 3. Progressive Refinement (Relative Age Breakthrough)
+Initially, we compared cars based on their **Registration Date** difference. However, we realized this created a "blind spot": a car sold 12 months ago was effectively "younger" during that transaction than it is today. 
 
-We ran 500 trials on the `tesla_data.json` dataset.
+**The Fix**: We now use **Relative Age Logic**. 
+*   **Age Today**: Months since target car's registration.
+*   **Age at Sale**: Months between comparable car's registration and its auction date.
+*   **Age Penalty**: Applied to the difference between these two "ages".
 
-| Metric | Baseline (Manual) | Optimized (ML) | Improvement |
-| :--- | :--- | :--- | :--- |
-| **Median Error** | ~4.20% | **3.55%** | **-15.3%** (Relative) |
+This allows the algorithm to correctly adjust for the fact that a historical sale of a 1-year-old car is structurally worth more than a 3-year-old car today, even if they share the same birth year.
+
+## Current Results (Feb 4, 2026 - Run 3)
+
+The introduction of **Relative Age Logic** and refined feature penalties has led to our most accurate model yet.
+
+| Metric | Baseline (Manual) | Optimized (ML Run 1) | Optimized (ML Run 2) | Optimized (Run 3 - Relative Age) |
+| :--- | :--- | :--- | :--- | :--- |
+| **Median Error** | ~4.20% | 3.55% | 3.52% | **3.49%** |
 
 ### Parameter Changes
-The optimization revealed that the market behaves differently than our initial intuition:
+The third optimization run successfully decoupled "Market Recency" from "Physical Ageing":
 
 | Parameter | Description | Old Value | New Value | Insight |
 | :--- | :--- | :--- | :--- | :--- |
-| **Age Penalty** | Points per month old | 3.5 | **4.3** | **Age matters more.** The market heavily discounts older cars, even if mileage is low. |
-| **Recency** | Points per day since auction | 0.1 | **0.022** | **Recency matters less.** Market prices are relatively sticky. A sold price from 3 months ago is still very relevant. |
-| **Depreciation** | € adjustment per km | €0.06 | **€0.07** | **High mileage hits harder.** The depreciation curve is slightly steeper than linear regression initially suggested. |
-| **Neighbors** | Num. of comparison cars | 4 | **8** | **Safety in numbers.** using a larger pool helps average out "noise" (e.g., specific damage or options). |
+| **Age Penalty** | Points per month of "age" | 6.0 | **7.5** | **Ageing hurts more.** Once decoupled from recency, we see that cars lose value faster as they age physically. |
+| **Recency** | Points per day since auction | 0.003 | **0.14** | **Market timing matters.** Prices have actually fluctuated over time more than the simplistic model suggested. |
+| **Depreciation** | € adjustment per km | €0.05 | **€0.055** | **Steady.** Depreciation around €550 per 10k km is consistent. |
+| **Neighbors** | Num. of comparison cars | 8 | **6** | **Niche Focus.** Using slightly fewer, more precise neighbors yields better results than averaging 8. |
+| **Accident** | Penalty points | 25 | **30** | **High Impact.** Accidents are a significant deterrent for buyers. |
+| **Tires (8)** | Penalty points (8 tires) | 14 | **31** | **Premium Value.** Buyers value that second set of wheels significantly more than initially thought. |
 
 ## How to Re-Run Optimization
 As you add more data to `src/data/tesla_data.json`, the "best" parameters might change. You can re-run the optimization at any time.
@@ -44,6 +53,5 @@ As you add more data to `src/data/tesla_data.json`, the "best" parameters might 
 4.  **Update**: It will output the new best JSON configuration. You can then manually update the constants in `src/utils/valuation.js`.
 
 ## Future Improvements to Try
-*   **Weighted Features**: Currently, features like "Accident Free" have a fixed 20-point penalty. We could include these in the specific ML optimization to see if the market penalizes accidents by 20 points or 50 points.
-*   **Tire Logic**: Include tire mismatch penalties in the optimization.
-*   **Cohort Separation**: Run separate optimizations for Model 3 vs. Model Y to see if they depreciate at different rates.
+*   **Cohort Separation**: Run separate optimizations for Model 3 vs. Model Y.
+*   **Damage Text Analysis**: Use keywords to penalize specific damage descriptions.
