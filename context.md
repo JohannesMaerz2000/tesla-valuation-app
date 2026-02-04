@@ -60,10 +60,15 @@ We moved away from a "Base Price + Adjustments" formula to a **Weighted Nearest 
     *   **Mileage**: **1 point per 1,000 km** difference.
     *   **Attributes (Soft Penalties)**: Mismatches here add points, pushing the car down the list or reducing its weight:
         *   **Accident History**: **20 points** penalty if "Accident Free" status mismatches.
-        *   **Trailer Hitch**: **5 points** penalty for mismatch.
         *   **Tires**: **20 points** (Quantity mismatch, e.g. 8 vs 4) or **5 points** (Type mismatch, e.g. Summer vs Winter).
+    *   *Note: Trailer Hitch mismatch no longer affects the score/ranking, but triggers a price adjustment.*
 
-3.  **Prediction**: The final price is a weighted average of the top 4 neighbors, where weight = `1 / (Score + 1)`.
+3.  **Price Adjustments (Appraisal Logic)**:
+    *   **Trailer Hitch**: instead of a scoring penalty, we now apply a hard value adjustment to the comparable car's price:
+        *   **Missing Hitch**: If user wants a hitch but comparable has none -> **+€250** added to comparable's price.
+        *   **Extra Hitch**: If user has no hitch but comparable has one -> **-€250** subtracted from comparable's price.
+
+4.  **Prediction**: The final price is a weighted average of the top 4 neighbors (using their *Adjusted Prices*), where weight = `1 / (Score + 1)`.
 
 ---
 
@@ -71,9 +76,10 @@ We moved away from a "Base Price + Adjustments" formula to a **Weighted Nearest 
 *   **Frontend**: React (Vite).
 *   **Styling**: Tailwind CSS with a custom "Premium Dark Mode" aesthetic.
 *   **Transparency**:
-    *   The UI explicitly lists the 4 "Comparable Vehicles" used.
-    *   **Score Breakdown**: A detailed table shows exactly *why* a car was chosen, listing specific penalties for Tires, Tax, Accident, and Hitch (showing 0 pts/Green Checkmark for matches).
-    *   **Visual Cues**: Red penalties for mismatches, Green checkmarks for matches.
+    *   **Impact %**: We explicitly show the relational influence (percentage) of each comparable car on the final valuation.
+    *   **Price Adjustments**: Adjusted prices are shown in yellow with the original price crossed out (e.g. ~~€30.000~~ **€30.250**).
+    *   **Score Breakdown**: A detailed table shows specific penalties. Mismatched attributes like Trailer Hitch show their financial adjustment value.
+    *   **Visual Cues**: Red penalties for score mismatches, Yellow text for price adjustments, Green checkmarks for matches.
 
 ---
 
