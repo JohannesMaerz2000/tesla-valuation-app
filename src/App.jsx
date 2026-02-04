@@ -381,11 +381,16 @@ function App() {
                                                         </span>
                                                     </span>
                                                 </div>
-                                                {car.matchDetails.mileagePenalty < 0.1 ? (
-                                                    <CheckCircle className="w-4 h-4 text-green-500" />
-                                                ) : (
-                                                    <span className="text-red-400 font-mono text-xs">+{car.matchDetails.mileagePenalty.toFixed(1)} pts</span>
-                                                )}
+                                                <div className="flex items-center gap-2">
+                                                    {car.mileageAdjMsg && (
+                                                        <span className="text-yellow-500 font-mono text-xs">{car.mileageAdjMsg}</span>
+                                                    )}
+                                                    {car.matchDetails.mileagePenalty < 0.1 ? (
+                                                        <CheckCircle className="w-4 h-4 text-green-500" />
+                                                    ) : (
+                                                        <span className="text-red-400 font-mono text-xs">+{car.matchDetails.mileagePenalty.toFixed(1)} pts</span>
+                                                    )}
+                                                </div>
                                             </div>
 
                                             {/* Age / Registration */}
@@ -419,10 +424,10 @@ function App() {
                                             {/* Trailer Hitch */}
                                             <div className="flex justify-between items-center border-b border-gray-700/50 pb-1">
                                                 <span className="text-gray-400">Trailer Hitch</span>
-                                                {!car.adjustmentReason ? (
+                                                {!car.hitchAdjMsg ? (
                                                     <CheckCircle className="w-4 h-4 text-green-500" />
                                                 ) : (
-                                                    <span className="text-yellow-500 font-mono text-xs">{car.adjustmentReason}</span>
+                                                    <span className="text-yellow-500 font-mono text-xs">{car.hitchAdjMsg}</span>
                                                 )}
                                             </div>
 

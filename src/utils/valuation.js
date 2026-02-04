@@ -17,7 +17,7 @@ export const POWERTRAIN_OPTIONS = {
 // Tire types for matching
 const TIRE_TYPES = ["Summer", "Winter", "All-Season"];
 
-function getPowertrainCluster(car) {
+export function getPowertrainCluster(car) {
     // Simple clustering logic based on kW and Battery
     // This is a simplified version of the logic described in context
     const { kw, battery_capacity: batt } = car;
@@ -199,22 +199,40 @@ export function predictPrice(inputs, database) {
             }
         }
 
+        // Status Penalty
+        if (car.status !== "closed_seller_accepted") {
+            score += 100;
+            penalties.status = 100;
+        }
+
         // Price Adjustment Logic (Appraisal Method)
         let price = Number(car.highest_bid_price);
         let adjustment = 0;
-        let adjustmentReason = null;
+        let hitchAdjMsg = null;
+        let mileageAdjMsg = null;
 
+        // 1. Trailer Hitch
         if (hasAhk && !carHasAhk) {
-            // User wants Hitch, Car doesn't have it.
-            // We need to ADD value to the car to make it comparable to the user's target.
             adjustment += 250;
-            adjustmentReason = "+€250 (Missing Hitch)";
+            hitchAdjMsg = "+€250 (Missing Hitch)";
         } else if (!hasAhk && carHasAhk) {
-            // User doesn't want Hitch, Car has it.
-            // We need to SUBTRACT the value of the hitch from the car to compare it to the base target.
             adjustment -= 250;
-            adjustmentReason = "-€250 (Has Hitch)";
+            hitchAdjMsg = "-€250 (Has Hitch)";
         }
+
+        // 2. Mileage Adjustment (Depreciation)
+        const mileageDiff = car.mileage - mileage;
+        const mileageAdj = mileageDiff * 0.06;
+
+        if (Math.abs(mileageAdj) > 50) {
+            adjustment += mileageAdj;
+            const sign = mileageAdj > 0 ? "+" : "-";
+            // e.g. "+€3000"
+            mileageAdjMsg = `${sign}€${Math.abs(mileageAdj).toFixed(0)}`;
+        }
+
+        // Combined for header convenience (shows if ANY adjustment exists)
+        let adjustmentReason = [hitchAdjMsg, mileageAdjMsg].filter(Boolean).join(", ");
 
         const adjustedPrice = price + adjustment;
 
@@ -224,6 +242,8 @@ export function predictPrice(inputs, database) {
             price, // Original price
             adjustedPrice, // Price used for calculation
             adjustmentReason,
+            hitchAdjMsg,
+            mileageAdjMsg,
             penalties,
             matchDetails: {
                 tireMatchLabel,

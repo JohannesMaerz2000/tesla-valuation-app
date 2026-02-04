@@ -59,14 +59,18 @@ We moved away from a "Base Price + Adjustments" formula to a **Weighted Nearest 
     *   **Age**: **3.5 points per month** difference. (Increased to prioritize newer cars).
     *   **Mileage**: **1 point per 1,000 km** difference.
     *   **Attributes (Soft Penalties)**: Mismatches here add points, pushing the car down the list or reducing its weight:
+        *   **Status**: **100 points** penalty if offer was NOT accepted by seller (e.g. "active" or "declined"). This prioritizes sold prices.
         *   **Accident History**: **20 points** penalty if "Accident Free" status mismatches.
-        *   **Tires**: **20 points** (Quantity mismatch, e.g. 8 vs 4) or **5 points** (Type mismatch, e.g. Summer vs Winter).
+        *   **Tires**: **20 points** (Quantity mismatch) or **5 points** (Type mismatch).
     *   *Note: Trailer Hitch mismatch no longer affects the score/ranking, but triggers a price adjustment.*
 
 3.  **Price Adjustments (Appraisal Logic)**:
-    *   **Trailer Hitch**: instead of a scoring penalty, we now apply a hard value adjustment to the comparable car's price:
+    *   **Trailer Hitch**:
         *   **Missing Hitch**: If user wants a hitch but comparable has none -> **+€250** added to comparable's price.
         *   **Extra Hitch**: If user has no hitch but comparable has one -> **-€250** subtracted from comparable's price.
+    *   **Mileage (Depreciation)**: We adjust the comparable's price based on mileage difference to the target car.
+        *   **Rate**: **€0.06 per km** (Approx €600 per 10k km).
+        *   *Example*: If comparable has +10,000km more than you, we ADD €600 to its price (because your lower mileage car is worth more).
 
 4.  **Prediction**: The final price is a weighted average of the top 4 neighbors (using their *Adjusted Prices*), where weight = `1 / (Score + 1)`.
 
