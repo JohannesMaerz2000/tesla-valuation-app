@@ -2,14 +2,14 @@ import { differenceInMonths, differenceInDays, parseISO } from "date-fns";
 
 export const POWERTRAIN_OPTIONS = {
     "Model 3": [
-        { label: "Standard Range / RWD", kw: 208, battery: 60, id: "m3_sr" },
-        { label: "Long Range / AWD", kw: 366, battery: 75, id: "m3_lr" }, // Adjusted avg
-        { label: "Performance", kw: 393, battery: 79, id: "m3_p" },
+        { label: "Standard Range / RWD", kw: 208, kwDisplay: "208-239", battery: 60, id: "m3_sr" },
+        { label: "Long Range / AWD", kw: 366, kwDisplay: "324-366", battery: 75, id: "m3_lr" }, // Adjusted avg
+        { label: "Performance", kw: 393, kwDisplay: "377-460+", battery: 79, id: "m3_p" },
     ],
     "Model Y": [
-        { label: "Standard Range / RWD", kw: 220, battery: 60, id: "my_sr" },
-        { label: "Long Range / AWD", kw: 378, battery: 75, id: "my_lr" },
-        { label: "Performance", kw: 393, battery: 75, id: "my_p" },
+        { label: "Standard Range / RWD", kw: 220, kwDisplay: "220-255", battery: 60, id: "my_sr" },
+        { label: "Long Range / AWD", kw: 378, kwDisplay: "378", battery: 75, id: "my_lr" },
+        { label: "Performance", kw: 393, kwDisplay: "390+", battery: 75, id: "my_p" },
     ],
 };
 
@@ -26,14 +26,14 @@ function getPowertrainCluster(car) {
     // Model 3 Clusters
     if (car.model === "Model 3") {
         if (kw < 250 && batt < 65) return "m3_sr";
-        if (kw >= 250 && kw < 350 && batt >= 70) return "m3_lr";
-        if (kw >= 350 && batt >= 70) return "m3_p";
+        if (kw >= 250 && kw < 370 && batt >= 70) return "m3_lr";
+        if (kw >= 370 && batt >= 70) return "m3_p";
     }
 
     // Model Y Clusters
     if (car.model === "Model Y") {
         if (kw < 250 && batt < 65) return "my_sr";
-        if (kw >= 300 && kw < 390 && batt >= 70) return "my_lr";
+        if (kw >= 250 && kw < 390 && batt >= 70) return "my_lr";
         if (kw >= 390 && batt >= 70) return "my_p";
     }
 
@@ -49,8 +49,7 @@ export function predictPrice(inputs, database) {
         isNetPrice, // true for VAT (Company), false for Margin (Private)
         hasAhk, // boolean
         isAccidentFree, // boolean
-        tireCount, // 4 or 8
-        tireType, // "Summer", "Winter", etc.
+        tireOption, // "8_tires", "4_summer", etc.
     } = inputs;
 
     const targetDate = new Date(registrationDate);
@@ -131,34 +130,60 @@ export function predictPrice(inputs, database) {
         }
 
         // Tires
-        // Qty Mismatch (8 vs 4)
-        // Data: tires_total_sets = "1" or "2"
+        // Data: tires_total_sets ("1" or "2"), tires_summer ("1"), tires_winter ("1"), tires_all_season ("1")
         const sets = parseInt(car.tires_total_sets) || 1;
-        const carTireCount = sets * 4;
-        // Input tireCount is 4 or 8
-        if (tireCount !== carTireCount) {
-            score += 15;
-            penalties.tireQty = 15;
+        let carOption = "4_summer"; // Default
+
+        if (sets === 2) {
+            carOption = "8_tires"; // We assume 8 tires works for Summer/Winter combos
+        } else {
+            // It is 4 tires. Check type.
+            // Some cars have multiple flags, but usually 1 set implies one primary type.
+            if (car.tires_all_season === "1") carOption = "4_all_season";
+            else if (car.tires_winter === "1") carOption = "4_winter";
+            else carOption = "4_summer";
         }
 
-        // Type Mismatch
-        // Data: tires_summer="1", tires_winter="1", tires_all_season="1"
-        // If tireCount is 4, we check the type of that set.
-        // If tireCount is 8, usually "Summer" + "Winter".
-        // Let's assume input `tireType` is the primary set user has/wants.
-        // If car has that type, good.
-        // Context says: "Tire Status (8 Tires, Summer, Winter, All-Season) as a matching criterion... 5 points Type mismatch"
-        // Let's simplify:
-        let carType = "Summer"; // Default
-        if (car.tires_all_season === "1") carType = "All-Season";
-        else if (car.tires_winter === "1" && sets === 1) carType = "Winter";
-        // If sets=2, it's usually Summer+Winter, but let's assume "8 Tires" handles the count penalty, and type might likely be Summer primarily.
+        // Logic:
+        // if tireOption is 8_tires:
+        //    if carOption is 8_tires -> match (0)
+        //    else -> mismatch amount (20)
+        // else (user wants 4 tires):
+        //    if carOption is 8_tires -> mismatch amount (20)
+        //    else (both 4 tires):
+        //       if type match -> 0
+        //       else -> mismatch type (5)
 
-        if (tireType && carType !== tireType) {
-            // Only apply type penalty if counts matched? Or always?
-            // Context: "5 points (Type mismatch)".
-            score += 5;
-            penalties.tireType = 5;
+        // Helper map for display
+        const displayMap = {
+            "8_tires": "8 Tires",
+            "4_summer": "Summer",
+            "4_winter": "Winter",
+            "4_all_season": "All-Season"
+        };
+
+        let tireMatchLabel = displayMap[carOption]; // Default to showing what the car has
+
+        if (tireOption === "8_tires") {
+            if (carOption !== "8_tires") {
+                score += 20;
+                penalties.tire = 20;
+                tireMatchLabel = `Mismatch: Requested 8 Tires vs Car has ${displayMap[carOption]}`;
+            }
+        } else {
+            // User wants single set (4 tires)
+            if (carOption === "8_tires") {
+                score += 20;
+                penalties.tire = 20;
+                tireMatchLabel = `Mismatch: Requested 4 Tires vs Car has 8 Tires`;
+            } else {
+                // Both are single sets. Check type.
+                if (tireOption !== carOption) {
+                    score += 5;
+                    penalties.tire = 5;
+                    tireMatchLabel = `Mismatch: ${displayMap[tireOption]} vs ${displayMap[carOption]}`;
+                }
+            }
         }
 
         return {
@@ -167,9 +192,12 @@ export function predictPrice(inputs, database) {
             price: car.highest_bid_price, // The mapped price
             penalties,
             matchDetails: {
+                tireMatchLabel,
                 recencyPenalty,
                 agePenalty,
-                mileagePenalty
+                mileagePenalty,
+                diffMileage: car.mileage - mileage, // Positive: Car has more miles
+                diffMonths: differenceInMonths(carRegDate, targetDate) // Positive: Car is newer
             }
         };
     });

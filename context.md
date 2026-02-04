@@ -15,13 +15,13 @@ This project is a "Valuation Playground" designed to estimate the value of Tesla
 ### 1. Powertrain Clustering
 The raw data contains fragmented `kW` and `kWh` values. We successfully identified distinct clusters to map these to market trims:
 *   **Model Y**:
-    *   **Long Range**: ~378 kW / 75 kWh (Avg ~€31k)
-    *   **Performance**: ~393 kW / 75 kWh (Avg ~€32.3k)
-    *   **Standard Range**: ~220 kW / 60 kWh
+    *   **Standard Range**: 220-255 kW / 60 kWh
+    *   **Long Range**: 378 kW / 75 kWh (Avg ~€31k)
+    *   **Performance**: 390+ kW / 75 kWh (Avg ~€32.3k)
 *   **Model 3**:
-    *   **Standard Range**: ~208/239 kW / 50-60 kWh (Avg ~€24.6k)
-    *   **Long Range**: ~324 kW / 75 kWh
-    *   **Performance**: ~377/393 kW / 75-82 kWh
+    *   **Standard Range**: 208-239 kW / 50-60 kWh (Avg ~€24.6k)
+    *   **Long Range**: 324-366 kW / 75 kWh
+    *   **Performance**: 377-460+ kW / 75-82 kWh
 
 ### 2. The "Highland" Factor
 *   The **Model 3 Highland (Facelift 2024+)** is a critical value driver.
@@ -30,7 +30,7 @@ The raw data contains fragmented `kW` and `kWh` values. We successfully identifi
 
 ### 3. Tires
 *   Counter-intuitively, broader data showed that cars with *only winter tires* sometimes sold for less or similar to summer-only cars, likely due to correlation with age/mileage.
-*   **Algorithm Strategy**: We do not apply arbitrary cash bonuses/penalties. Instead, we use "Tire Status" (8 Tires, Summer, Winter, All-Season) as a matching criterion. The algorithm attempts to find comparables with the *same* tire setup to determine the price naturally.
+*   **Algorithm Strategy**: Users select "8 Tires", "Summer", "Winter", or "All-Season". We apply a **20 point penalty** for quantity mismatches (8 vs 4) and a **5 point penalty** for type mismatches (e.g. Summer vs Winter).
 
 ### 4. Taxation (VAT vs Margin)
 *   **Mechanism & Data Findings**:
@@ -61,7 +61,7 @@ We moved away from a "Base Price + Adjustments" formula to a **Weighted Nearest 
     *   **Attributes (Soft Penalties)**: Mismatches here add points, pushing the car down the list or reducing its weight:
         *   **Accident History**: **20 points** penalty if "Accident Free" status mismatches.
         *   **Trailer Hitch**: **5 points** penalty for mismatch.
-        *   **Tires**: **15 points** (Quantity mismatch, e.g. 8 vs 4) or **5 points** (Type mismatch, e.g. Summer vs Winter).
+        *   **Tires**: **20 points** (Quantity mismatch, e.g. 8 vs 4) or **5 points** (Type mismatch, e.g. Summer vs Winter).
 
 3.  **Prediction**: The final price is a weighted average of the top 4 neighbors, where weight = `1 / (Score + 1)`.
 

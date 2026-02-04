@@ -23,8 +23,7 @@ function App() {
     const [isNetPrice, setIsNetPrice] = useState(false); // Default Private/Margin
     const [hasAhk, setHasAhk] = useState(false);
     const [isAccidentFree, setIsAccidentFree] = useState(true);
-    const [tireCount, setTireCount] = useState(4); // 4 or 8
-    const [tireType, setTireType] = useState("Summer"); // Summer, Winter, All-Season
+    const [tireOption, setTireOption] = useState("4_summer"); // Options: "8_tires", "4_summer", "4_winter", "4_all_season"
 
     // Derived State: Available Powertrains
     const availablePowertrains = POWERTRAIN_OPTIONS[model] || [];
@@ -50,8 +49,9 @@ function App() {
                 isNetPrice,
                 hasAhk,
                 isAccidentFree,
-                tireCount: Number(tireCount),
-                tireType,
+                hasAhk,
+                isAccidentFree,
+                tireOption,
             },
             teslaData
         );
@@ -63,8 +63,7 @@ function App() {
         isNetPrice,
         hasAhk,
         isAccidentFree,
-        tireCount,
-        tireType,
+        tireOption,
     ]);
 
     const { price, neighbors } = prediction;
@@ -115,8 +114,8 @@ function App() {
                                                 key={m}
                                                 onClick={() => setModel(m)}
                                                 className={`py-2 px-4 rounded-lg border transition-all ${model === m
-                                                        ? "bg-red-500/10 border-red-500 text-red-500 font-medium"
-                                                        : "bg-[#1a1a1a] border-gray-700 text-gray-300 hover:border-gray-500"
+                                                    ? "bg-red-500/10 border-red-500 text-red-500 font-medium"
+                                                    : "bg-[#1a1a1a] border-gray-700 text-gray-300 hover:border-gray-500"
                                                     }`}
                                             >
                                                 {m}
@@ -135,7 +134,7 @@ function App() {
                                     >
                                         {availablePowertrains.map((opt) => (
                                             <option key={opt.id} value={opt.id}>
-                                                {opt.label} ({opt.kw}kW / {opt.battery}kWh)
+                                                {opt.label} ({opt.kwDisplay} kW / {opt.battery} kWh)
                                             </option>
                                         ))}
                                     </select>
@@ -176,8 +175,8 @@ function App() {
                                         <button
                                             onClick={() => setIsNetPrice(false)}
                                             className={`py-2 px-3 rounded-lg border text-sm transition-all flex items-center justify-center gap-2 ${!isNetPrice
-                                                    ? "bg-blue-500/10 border-blue-500 text-blue-400"
-                                                    : "bg-[#1a1a1a] border-gray-700 text-gray-400"
+                                                ? "bg-blue-500/10 border-blue-500 text-blue-400"
+                                                : "bg-[#1a1a1a] border-gray-700 text-gray-400"
                                                 }`}
                                         >
                                             <User className="w-4 h-4" /> Private (Margin)
@@ -185,8 +184,8 @@ function App() {
                                         <button
                                             onClick={() => setIsNetPrice(true)}
                                             className={`py-2 px-3 rounded-lg border text-sm transition-all flex items-center justify-center gap-2 ${isNetPrice
-                                                    ? "bg-blue-500/10 border-blue-500 text-blue-400"
-                                                    : "bg-[#1a1a1a] border-gray-700 text-gray-400"
+                                                ? "bg-blue-500/10 border-blue-500 text-blue-400"
+                                                : "bg-[#1a1a1a] border-gray-700 text-gray-400"
                                                 }`}
                                         >
                                             <Briefcase className="w-4 h-4" /> Company (VAT)
@@ -221,30 +220,18 @@ function App() {
                                         </button>
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-4 pt-2">
-                                        <div>
-                                            <label className="text-xs text-gray-500 block mb-1">Tire Count</label>
-                                            <select
-                                                value={tireCount}
-                                                onChange={e => setTireCount(e.target.value)}
-                                                className="w-full bg-[#1a1a1a] border border-gray-700 rounded p-1.5 text-sm"
-                                            >
-                                                <option value="4">4 Tires</option>
-                                                <option value="8">8 Tires</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="text-xs text-gray-500 block mb-1">Tire Type</label>
-                                            <select
-                                                value={tireType}
-                                                onChange={e => setTireType(e.target.value)}
-                                                className="w-full bg-[#1a1a1a] border border-gray-700 rounded p-1.5 text-sm"
-                                            >
-                                                <option value="Summer">Summer</option>
-                                                <option value="Winter">Winter</option>
-                                                <option value="All-Season">All-Season</option>
-                                            </select>
-                                        </div>
+                                    <div className="pt-2">
+                                        <label className="text-xs text-gray-500 block mb-1">Tires</label>
+                                        <select
+                                            value={tireOption}
+                                            onChange={e => setTireOption(e.target.value)}
+                                            className="w-full bg-[#1a1a1a] border border-gray-700 rounded p-1.5 text-sm"
+                                        >
+                                            <option value="8_tires">8 Tires (Summer + Winter)</option>
+                                            <option value="4_summer">4 Tires (Summer Only)</option>
+                                            <option value="4_winter">4 Tires (Winter Only)</option>
+                                            <option value="4_all_season">4 Tires (All-Season)</option>
+                                        </select>
                                     </div>
                                 </div>
 
@@ -280,45 +267,106 @@ function App() {
                                 </div>
                             ) : (
                                 neighbors.map((car, idx) => (
-                                    <div key={idx} className="bg-[#111] border border-gray-700/50 rounded-xl p-4 hover:border-gray-600 transition-colors flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
+                                    <div key={idx} className="bg-[#111] border border-gray-700/50 rounded-xl p-5 hover:border-gray-600 transition-colors">
 
-                                        {/* Car Info */}
-                                        <div className="flex-1">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <span className="font-semibold text-white">{car.model}</span>
-                                                <span className="text-xs px-1.5 py-0.5 rounded bg-gray-800 text-gray-400">{car.powe_kw} kW</span>
-                                                <span className="text-xs px-1.5 py-0.5 rounded bg-gray-800 text-gray-400">{Math.round(car.battery_netto)} kWh</span>
+                                        {/* Header Row: Basic Info & Price */}
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div>
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="font-semibold text-white">{car.model}</span>
+                                                    <span className="text-xs px-1.5 py-0.5 rounded bg-gray-800 text-gray-400">{car.powe_kw} kW</span>
+                                                    <span className="text-xs px-1.5 py-0.5 rounded bg-gray-800 text-gray-400">{Math.round(car.battery_netto)} kWh</span>
+                                                </div>
+                                                <div className="text-sm text-gray-400 flex flex-wrap gap-x-4 gap-y-1">
+                                                    <span>{car.first_registration}</span>
+                                                    <span>{car.mileage.toLocaleString()} km</span>
+                                                </div>
                                             </div>
-                                            <div className="text-sm text-gray-400 flex flex-wrap gap-x-4 gap-y-1">
-                                                <span>{car.first_registration}</span>
-                                                <span>{car.mileage.toLocaleString()} km</span>
-                                                <span className={car.accident_free_cardentity === 't' ? 'text-green-500/80' : 'text-red-500/80'}>
-                                                    {car.accident_free_cardentity === 't' ? 'Accident Free' : 'Accident History'}
-                                                </span>
+                                            <div className="text-right">
+                                                <div className="text-xl font-bold text-white tracking-tight">{formatMoney(car.price)}</div>
+                                                <div className="text-xs text-gray-500">
+                                                    Score: {car.score.toFixed(2)}
+                                                </div>
                                             </div>
                                         </div>
 
-                                        {/* Penalties Visualization */}
-                                        <div className="flex gap-2 text-xs">
-                                            {/* Accident Penalty */}
-                                            <div className={`px-2 py-1 rounded border ${!car.penalties.accident ? 'border-green-900 bg-green-900/20 text-green-400' : 'border-red-900 bg-red-900/20 text-red-400'}`}>
-                                                Accident
+                                        {/* Attributes Breakdown */}
+                                        <div className="bg-white/5 rounded-lg p-4 text-sm flex flex-col gap-2">
+                                            {/* Mileage */}
+                                            <div className="flex justify-between items-center border-b border-gray-700/50 pb-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-gray-400">Mileage</span>
+                                                    <span className="text-gray-300 text-xs hidden sm:inline">
+                                                        {car.mileage.toLocaleString()} km
+                                                        <span className="text-gray-500 ml-1">
+                                                            ({car.matchDetails.diffMileage > 0 ? '+' : ''}{car.matchDetails.diffMileage.toLocaleString()})
+                                                        </span>
+                                                    </span>
+                                                </div>
+                                                {car.matchDetails.mileagePenalty < 0.1 ? (
+                                                    <CheckCircle className="w-4 h-4 text-green-500" />
+                                                ) : (
+                                                    <span className="text-red-400 font-mono text-xs">+{car.matchDetails.mileagePenalty.toFixed(1)} pts</span>
+                                                )}
                                             </div>
-                                            {/* Hitch Penalty */}
-                                            <div className={`px-2 py-1 rounded border ${!car.penalties.ahk ? 'border-green-900 bg-green-900/20 text-green-400' : 'border-red-900 bg-red-900/20 text-red-400'}`}>
-                                                Hitch
-                                            </div>
-                                            {/* Tires Penalty */}
-                                            <div className={`px-2 py-1 rounded border ${(!car.penalties.tireQty && !car.penalties.tireType) ? 'border-green-900 bg-green-900/20 text-green-400' : 'border-red-900 bg-red-900/20 text-red-400'}`}>
-                                                Tires
-                                            </div>
-                                        </div>
 
-                                        {/* Price */}
-                                        <div className="text-right min-w-[120px]">
-                                            <div className="text-xl font-bold text-white tracking-tight">{formatMoney(car.price)}</div>
-                                            <div className="text-xs text-gray-500">
-                                                Score: {car.score.toFixed(2)}
+                                            {/* Age / Registration */}
+                                            <div className="flex justify-between items-center border-b border-gray-700/50 pb-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-gray-400">Age</span>
+                                                    <span className="text-gray-300 text-xs hidden sm:inline">
+                                                        {car.first_registration}
+                                                        <span className="text-gray-500 ml-1">
+                                                            ({car.matchDetails.diffMonths > 0 ? '+' : ''}{car.matchDetails.diffMonths} mo)
+                                                        </span>
+                                                    </span>
+                                                </div>
+                                                {car.matchDetails.agePenalty < 0.1 ? (
+                                                    <CheckCircle className="w-4 h-4 text-green-500" />
+                                                ) : (
+                                                    <span className="text-red-400 font-mono text-xs">+{car.matchDetails.agePenalty.toFixed(1)} pts</span>
+                                                )}
+                                            </div>
+
+                                            {/* Accident Free */}
+                                            <div className="flex justify-between items-center border-b border-gray-700/50 pb-1">
+                                                <span className="text-gray-400">Accident Free</span>
+                                                {!car.penalties.accident ? (
+                                                    <CheckCircle className="w-4 h-4 text-green-500" />
+                                                ) : (
+                                                    <span className="text-red-400 font-mono text-xs">+{car.penalties.accident} pts</span>
+                                                )}
+                                            </div>
+
+                                            {/* Trailer Hitch */}
+                                            <div className="flex justify-between items-center border-b border-gray-700/50 pb-1">
+                                                <span className="text-gray-400">Trailer Hitch</span>
+                                                {!car.penalties.ahk ? (
+                                                    <CheckCircle className="w-4 h-4 text-green-500" />
+                                                ) : (
+                                                    <span className="text-red-400 font-mono text-xs">+{car.penalties.ahk} pts</span>
+                                                )}
+                                            </div>
+
+                                            {/* Tires */}
+                                            <div className="flex justify-between items-center border-b border-gray-700/50 pb-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-gray-400">Tires</span>
+                                                    <span className="text-gray-500 text-xs">
+                                                        ({car.matchDetails.tireMatchLabel})
+                                                    </span>
+                                                </div>
+                                                {(!car.penalties.tire) ? (
+                                                    <CheckCircle className="w-4 h-4 text-green-500" />
+                                                ) : (
+                                                    <span className="text-red-400 font-mono text-xs">+{car.penalties.tire} pts</span>
+                                                )}
+                                            </div>
+
+                                            {/* Recency */}
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-gray-400">Recency</span>
+                                                <span className="text-red-400 font-mono text-xs">+{car.matchDetails.recencyPenalty.toFixed(1)} pts</span>
                                             </div>
                                         </div>
                                     </div>
@@ -328,7 +376,7 @@ function App() {
                     </section>
                 </main>
             </div>
-        </div>
+        </div >
     );
 }
 
