@@ -51,7 +51,7 @@ We moved away from a "Base Price + Adjustments" formula to a **Weighted Nearest 
 1.  **Hard Filtering**:
     *   **Model**: Exact match (Model 3 vs Y).
     *   **Powertrain**: Cluster match (kW check) + Battery size check (+/- 2kWh).
-    *   **Highland**: Strict separation of Pre-Facelift vs. Facelift (2024+).
+    *   **Highland**: Strict separation using the `is_highland` flag. Highland models are never compared with Pre-Highland models.
     *   **Taxation**: Strict matching. ROI/VAT cars are only matched with other VAT-deductible cars (Net Price). Margin cars match Margin cars (Gross Price).
 
 2.  **Distance Metric (Scoring)**: We find the top 4 most similar cars by minimizing a "Distance Score":

@@ -3,6 +3,7 @@ import { differenceInMonths, differenceInDays, parseISO } from "date-fns";
 export const POWERTRAIN_OPTIONS = {
     "Model 3": [
         { label: "Standard Range / RWD", kw: 208, kwDisplay: "208-239", battery: 60, id: "m3_sr" },
+        { label: "Long Range / RWD", kw: 235, kwDisplay: "235", battery: 75, id: "m3_lr_rwd", onlyHighland: true }, // Highland Special
         { label: "Long Range / AWD", kw: 366, kwDisplay: "324-366", battery: 75, id: "m3_lr" }, // Adjusted avg
         { label: "Performance", kw: 393, kwDisplay: "377-460+", battery: 79, id: "m3_p" },
     ],
@@ -25,9 +26,22 @@ function getPowertrainCluster(car) {
 
     // Model 3 Clusters
     if (car.model === "Model 3") {
+        const isHighland = car.is_highland === "TRUE";
+
         if (kw < 250 && batt < 65) return "m3_sr";
-        if (kw >= 250 && kw < 370 && batt >= 70) return "m3_lr";
-        if (kw >= 370 && batt >= 70) return "m3_p";
+
+        // LR Logic
+        if (batt >= 70) {
+            // Performance (High kW)
+            if (kw >= 370) return "m3_p";
+
+            // Long Range AWD (Standard)
+            if (kw >= 250) return "m3_lr";
+
+            // Long Range RWD (Highland, ~235kW)
+            // It has big battery (>=70) but lower kW (<250)
+            if (kw >= 220 && kw < 250) return "m3_lr_rwd";
+        }
     }
 
     // Model Y Clusters
@@ -71,11 +85,13 @@ export function predictPrice(inputs, database) {
         if (cluster !== powertrainId) return false;
 
         // Highland Logic (Facelift 2024+)
-        const carRegDate = parseISO(car.first_registration);
-        const isHighland = carRegDate.getFullYear() >= 2024 || (carRegDate.getFullYear() === 2023 && carRegDate.getMonth() >= 9);
-        const inputIsHighland = targetDate.getFullYear() >= 2024 || (targetDate.getFullYear() === 2023 && targetDate.getMonth() >= 9);
+        // Data: is_highland = "TRUE" or "FALSE"
+        const carIsHighland = car.is_highland === "TRUE";
 
-        if (isHighland !== inputIsHighland) return false;
+        // If the user selected Highland, we only show Highland cars.
+        // If they didn't, we only show pre-Highland cars.
+        // This is a strict separation as requested.
+        if (inputs.isHighland !== carIsHighland) return false;
 
         // Taxation Match
         // Data: taxation = "vat_deductible" or "marginally_taxed"
@@ -124,10 +140,7 @@ export function predictPrice(inputs, database) {
         // Trailer Hitch (AHK)
         // Data: features_trailer_hitch = "t" OR trailer_hitch_seller = "t"
         const carHasAhk = car.features_trailer_hitch === "t" || car.trailer_hitch_seller === "t";
-        if (hasAhk !== carHasAhk) {
-            score += 5;
-            penalties.ahk = 5;
-        }
+        // Penalty removed in favor of price adjustment (Appraisal Method)
 
         // Tires
         // Data: tires_total_sets ("1" or "2"), tires_summer ("1"), tires_winter ("1"), tires_all_season ("1")
@@ -186,10 +199,31 @@ export function predictPrice(inputs, database) {
             }
         }
 
+        // Price Adjustment Logic (Appraisal Method)
+        let price = Number(car.highest_bid_price);
+        let adjustment = 0;
+        let adjustmentReason = null;
+
+        if (hasAhk && !carHasAhk) {
+            // User wants Hitch, Car doesn't have it.
+            // We need to ADD value to the car to make it comparable to the user's target.
+            adjustment += 250;
+            adjustmentReason = "+€250 (Missing Hitch)";
+        } else if (!hasAhk && carHasAhk) {
+            // User doesn't want Hitch, Car has it.
+            // We need to SUBTRACT the value of the hitch from the car to compare it to the base target.
+            adjustment -= 250;
+            adjustmentReason = "-€250 (Has Hitch)";
+        }
+
+        const adjustedPrice = price + adjustment;
+
         return {
             ...car,
             score,
-            price: car.highest_bid_price, // The mapped price
+            price, // Original price
+            adjustedPrice, // Price used for calculation
+            adjustmentReason,
             penalties,
             matchDetails: {
                 tireMatchLabel,
@@ -213,9 +247,14 @@ export function predictPrice(inputs, database) {
 
     neighbors.forEach(n => {
         const weight = 1 / (n.score + 1);
-        weightedSum += n.price * weight;
+        weightedSum += n.adjustedPrice * weight; // Use Adjusted Price
         totalWeight += weight;
         n.weight = weight; // for display
+    });
+
+    // Add influence percentage
+    neighbors.forEach(n => {
+        n.influence = totalWeight > 0 ? (n.weight / totalWeight) : 0;
     });
 
     const predictedPrice = weightedSum / totalWeight;

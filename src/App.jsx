@@ -24,19 +24,34 @@ function App() {
     const [hasAhk, setHasAhk] = useState(false);
     const [isAccidentFree, setIsAccidentFree] = useState(true);
     const [tireOption, setTireOption] = useState("4_summer"); // Options: "8_tires", "4_summer", "4_winter", "4_all_season"
+    const [isHighland, setIsHighland] = useState(false);
 
     // Derived State: Available Powertrains
-    const availablePowertrains = POWERTRAIN_OPTIONS[model] || [];
+    const availablePowertrains = useMemo(() => {
+        const options = POWERTRAIN_OPTIONS[model] || [];
+        return options.filter((opt) => {
+            if (opt.onlyHighland && !isHighland) return false;
+            return true;
+        });
+    }, [model, isHighland]);
 
     // Effect: Reset powertrain choice when model changes
     useEffect(() => {
-        const options = POWERTRAIN_OPTIONS[model];
-        if (options && options.length > 0) {
-            // Default to Long Range if available, else first
-            const lr = options.find((o) => o.label.includes("Long Range"));
-            setPowertrainId(lr ? lr.id : options[0].id);
-        }
+        // Reset Highland state when model changes
+        setIsHighland(false);
     }, [model]);
+
+    // Effect: Validate powertrain ID when available options change
+    useEffect(() => {
+        if (availablePowertrains.length > 0) {
+            const currentIsValid = availablePowertrains.find((p) => p.id === powertrainId);
+            if (!currentIsValid) {
+                // Default to Long Range if available, else first
+                const lr = availablePowertrains.find((o) => o.label.includes("Long Range"));
+                setPowertrainId(lr ? lr.id : availablePowertrains[0].id);
+            }
+        }
+    }, [availablePowertrains, powertrainId]);
 
     // Calculation
     const prediction = useMemo(() => {
@@ -52,6 +67,7 @@ function App() {
                 hasAhk,
                 isAccidentFree,
                 tireOption,
+                isHighland,
             },
             teslaData
         );
@@ -64,6 +80,7 @@ function App() {
         hasAhk,
         isAccidentFree,
         tireOption,
+        isHighland,
     ]);
 
     const { price, neighbors } = prediction;
@@ -124,6 +141,19 @@ function App() {
                                     </div>
                                 </div>
 
+                                {/* Highland Toggle (Model 3 Only) */}
+                                {model === "Model 3" && (
+                                    <div className="flex items-center justify-between bg-[#1a1a1a] p-3 rounded-lg border border-gray-700">
+                                        <span className="text-sm text-gray-300">Highland (Facelift 2024+)</span>
+                                        <button
+                                            onClick={() => setIsHighland(!isHighland)}
+                                            className={`w-12 h-6 rounded-full p-1 transition-colors ${isHighland ? 'bg-red-500' : 'bg-gray-700'}`}
+                                        >
+                                            <div className={`w-4 h-4 rounded-full bg-white transition-transform ${isHighland ? 'translate-x-6' : ''}`} />
+                                        </button>
+                                    </div>
+                                )}
+
                                 {/* Powertrain */}
                                 <div>
                                     <label className="block text-sm text-gray-400 mb-1">Variant</label>
@@ -146,12 +176,36 @@ function App() {
                                         <label className="block text-sm text-gray-400 mb-1 flex items-center gap-1">
                                             <Calendar className="w-3 h-3" /> Registration
                                         </label>
-                                        <input
-                                            type="date"
-                                            value={registrationDate}
-                                            onChange={(e) => setRegistrationDate(e.target.value)}
-                                            className="w-full bg-[#1a1a1a] border border-gray-700 rounded-lg p-2.5 text-white focus:border-red-500 focus:outline-none"
-                                        />
+                                        <div className="flex gap-2">
+                                            <select
+                                                value={new Date(registrationDate).getMonth()}
+                                                onChange={(e) => {
+                                                    const d = new Date(registrationDate);
+                                                    d.setMonth(parseInt(e.target.value));
+                                                    setRegistrationDate(d.toISOString().slice(0, 10)); // Keep YYYY-MM-DD format for compatibility
+                                                }}
+                                                className="w-full bg-[#1a1a1a] border border-gray-700 rounded-lg p-2.5 text-white focus:border-red-500 focus:outline-none appearance-none"
+                                            >
+                                                {Array.from({ length: 12 }, (_, i) => (
+                                                    <option key={i} value={i}>
+                                                        {new Date(0, i).toLocaleString('default', { month: 'long' })}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <select
+                                                value={new Date(registrationDate).getFullYear()}
+                                                onChange={(e) => {
+                                                    const d = new Date(registrationDate);
+                                                    d.setFullYear(parseInt(e.target.value));
+                                                    setRegistrationDate(d.toISOString().slice(0, 10));
+                                                }}
+                                                className="w-24 bg-[#1a1a1a] border border-gray-700 rounded-lg p-2.5 text-white focus:border-red-500 focus:outline-none appearance-none"
+                                            >
+                                                {Array.from({ length: 15 }, (_, i) => new Date().getFullYear() + 1 - i).map(year => (
+                                                    <option key={year} value={year}>{year}</option>
+                                                ))}
+                                            </select>
+                                        </div>
                                     </div>
                                     <div>
                                         <label className="block text-sm text-gray-400 mb-1 flex items-center gap-1">
@@ -274,18 +328,42 @@ function App() {
                                             <div>
                                                 <div className="flex items-center gap-2 mb-1">
                                                     <span className="font-semibold text-white">{car.model}</span>
+                                                    {car.is_highland === "TRUE" && (
+                                                        <span className="px-1.5 py-0.5 text-[10px] bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded">
+                                                            Highland
+                                                        </span>
+                                                    )}
                                                     <span className="text-xs px-1.5 py-0.5 rounded bg-gray-800 text-gray-400">{car.powe_kw} kW</span>
                                                     <span className="text-xs px-1.5 py-0.5 rounded bg-gray-800 text-gray-400">{Math.round(car.battery_netto)} kWh</span>
                                                 </div>
                                                 <div className="text-sm text-gray-400 flex flex-wrap gap-x-4 gap-y-1">
-                                                    <span>{car.first_registration}</span>
+                                                    <span>
+                                                        {new Date(car.first_registration).toLocaleString('default', { month: 'short', year: 'numeric' })}
+                                                    </span>
                                                     <span>{car.mileage.toLocaleString()} km</span>
                                                 </div>
                                             </div>
                                             <div className="text-right">
-                                                <div className="text-xl font-bold text-white tracking-tight">{formatMoney(car.price)}</div>
-                                                <div className="text-xs text-gray-500">
-                                                    Score: {car.score.toFixed(2)}
+                                                {car.adjustmentReason ? (
+                                                    <div className="flex items-baseline justify-end gap-2">
+                                                        <span className="text-sm text-gray-500 line-through font-normal decoration-gray-600">{formatMoney(car.price)}</span>
+                                                        <span className="text-xl font-bold text-yellow-400 tracking-tight">{formatMoney(car.adjustedPrice)}</span>
+                                                    </div>
+                                                ) : (
+                                                    <div className="text-xl font-bold text-white tracking-tight">{formatMoney(car.price)}</div>
+                                                )}
+
+                                                <div className="mt-2 flex flex-col items-end gap-1">
+                                                    <div className="flex items-center gap-2 text-xs">
+                                                        <span className="text-gray-500">Score: {car.score.toFixed(2)}</span>
+                                                        <span className="text-blue-400 font-mono">{(car.influence * 100).toFixed(0)}% Impact</span>
+                                                    </div>
+                                                    <div className="w-24 h-1 bg-gray-800 rounded-full overflow-hidden">
+                                                        <div
+                                                            className="h-full bg-blue-500"
+                                                            style={{ width: `${car.influence * 100}%` }}
+                                                        />
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -315,7 +393,7 @@ function App() {
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-gray-400">Age</span>
                                                     <span className="text-gray-300 text-xs hidden sm:inline">
-                                                        {car.first_registration}
+                                                        {new Date(car.first_registration).toLocaleString('default', { month: 'short', year: 'numeric' })}
                                                         <span className="text-gray-500 ml-1">
                                                             ({car.matchDetails.diffMonths > 0 ? '+' : ''}{car.matchDetails.diffMonths} mo)
                                                         </span>
@@ -341,10 +419,10 @@ function App() {
                                             {/* Trailer Hitch */}
                                             <div className="flex justify-between items-center border-b border-gray-700/50 pb-1">
                                                 <span className="text-gray-400">Trailer Hitch</span>
-                                                {!car.penalties.ahk ? (
+                                                {!car.adjustmentReason ? (
                                                     <CheckCircle className="w-4 h-4 text-green-500" />
                                                 ) : (
-                                                    <span className="text-red-400 font-mono text-xs">+{car.penalties.ahk} pts</span>
+                                                    <span className="text-yellow-500 font-mono text-xs">{car.adjustmentReason}</span>
                                                 )}
                                             </div>
 
