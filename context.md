@@ -31,10 +31,10 @@ The raw data contains fragmented `kW` and `kWh` values. We successfully identifi
 
 ### 3. Tires
 *   Counter-intuitively, broader data showed that cars with *only winter tires* sometimes sold for less or similar to summer-only cars, likely due to correlation with age/mileage.
-*   **Algorithm Strategy**: Users select "8 Tires", "Summer", "Winter", or "All-Season".
+*   **Algorithm Strategy**: The user inputs the tires included with their car ("8 Tires", "Summer", "Winter", or "All-Season").
 *   **Asymmetric Penalties** (discovered via ML optimization):
-    *   User has 8 tires, comp has 4: **45 points** (big mismatch - user's car is better)
-    *   User has 4 tires, comp has 8: **19 points** (smaller penalty)
+    *   **Target Car (User's)** has 8 tires, **Comparable** has 4: **45 points** (Significant penalty. The comparable is "inferior" to the user's car, so we avoid using it as a price reference).
+    *   **Target Car (User's)** has 4 tires, **Comparable** has 8: **19 points** (Smaller penalty. The comparable is "superior", but better to include than excluding it entirely).
     *   Type mismatch (e.g. Summer vs Winter): **15 points**
 
 ### 4. Taxation (VAT vs Margin)

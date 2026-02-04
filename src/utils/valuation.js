@@ -92,10 +92,11 @@ export function predictPrice(inputs, database) {
         hasAhk, // boolean
         isAccidentFree, // boolean
         tireOption, // "8_tires", "4_summer", etc.
+        valuationDate = new Date(), // Default to now, but allow override for backtesting
     } = inputs;
 
     const targetDate = new Date(registrationDate);
-    const now = new Date();
+    const now = new Date(valuationDate);
 
     // Select Model Config
     const modelConfig = (model === "Model 3") ? VALUATION_CONFIG.model3 : VALUATION_CONFIG.modelY;
@@ -132,6 +133,10 @@ export function predictPrice(inputs, database) {
         // If !isNetPrice (Private), we only look at marginally_taxed cars.
         const carIsVat = car.taxation === "vat_deductible";
         if (carIsVat !== isNetPrice) return false;
+
+        // Price Validation
+        // We must exclude cars with 0 or invalid price, otherwise they drag the average down to 0.
+        if (!car.highest_bid_price || Number(car.highest_bid_price) <= 0) return false;
 
         return true;
     });
@@ -283,10 +288,61 @@ export function predictPrice(inputs, database) {
             }
         };
     });
-    // 3. Prediction
-    // Optimized v8 Neighbor Count
+    // 3. Prediction & Outlier Removal (Consensus Filter)
     scored.sort((a, b) => a.score - b.score);
-    const neighbors = scored.slice(0, shared.neighborCount);
+
+    // Dynamic Outlier Logic:
+    // Instead of taking the top N blindly, we look at a larger pool (e.g., 3x N).
+    // We calculate the MEDIAN price of this pool to establish "Market Consensus".
+    // We reject any car that deviates significantly (>20-25%) from this consensus.
+    // This handles "lowball rejected bids" or "salvage titles" dynamically.
+
+    const poolSize = shared.neighborCount * 3; // Look at top 15-20 cars
+    const candidates = scored.slice(0, poolSize);
+
+    if (candidates.length >= 3) {
+        // Calculate Median Adjusted Price of the candidate pool
+        // We use adjustedPrice (normalized for mileage/hitch) for fair comparison
+        const prices = candidates.map(c => c.adjustedPrice).sort((a, b) => a - b);
+        const medianPrice = prices[Math.floor(prices.length / 2)];
+
+        // Filter outliers
+        const outlierThreshold = 0.25; // 25% deviation allowed
+        const validCandidates = candidates.filter(c => {
+            const deviation = Math.abs(c.adjustedPrice - medianPrice) / medianPrice;
+            const isOutlier = deviation > outlierThreshold;
+
+            if (isOutlier) {
+                // Mark as outlier for debugging/UI if needed (though we exclude them from calc)
+                c.isOutlier = true;
+                c.outlierReason = `Deviated ${(deviation * 100).toFixed(1)}% from median (€${medianPrice.toFixed(0)})`;
+                return false;
+            }
+            return true;
+        });
+
+        // If we filtered too aggressively and have few cars left, currently we just use what we have.
+        // But if we have at least 'neighborCount' survivors, we use them.
+        // If validCandidates is empty (rare), we might fall back to original candidates to avoid 0 price.
+        if (validCandidates.length > 0) {
+            // Re-slice to get the original desired count from the CLEANED list
+            // Note: validCandidates are still sorted by score implicitly? 
+            // - No, we sorted 'candidates' by score initially, but the filter preserves order in JS.
+            // So validCandidates[0] is still the best scoring non-outlier.
+
+            // We overwrite the generic 'neighbors' array selection with our cleaned list
+            // However, we need to assign it to a variable we use below.
+            // Let's modify the flow to use a let variable or just direct slice.
+
+            var neighbors = validCandidates.slice(0, shared.neighborCount);
+        } else {
+            // Fallback: If EVERYTHING is an outlier (cluster is crazy), use closest matches
+            var neighbors = candidates.slice(0, shared.neighborCount);
+        }
+    } else {
+        // Not enough data for stats, just use top N
+        var neighbors = scored.slice(0, shared.neighborCount);
+    }
 
     if (neighbors.length === 0) return { price: 0, neighbors: [] };
 
